@@ -1,4 +1,4 @@
-import { RedisClientType } from 'redis';
+import Client from 'ioredis';
 
 // Type definition for possible cached result states.
 export type CachedResult =
@@ -35,7 +35,7 @@ export class RedisCache {
    * Constructs an instance of RedisCache.
    * @param redis A RedisClientType instance for Redis operations.
    */
-  constructor(private readonly redis: RedisClientType) {}
+  constructor(private readonly redis: Client) {}
 
   /**
    * Retrieves a cached result by key.
@@ -44,7 +44,7 @@ export class RedisCache {
    */
   async get(key: string): Promise<CachedResult | null> {
     try {
-      const { type, error, value } = await this.redis.hGetAll(key);
+      const { type, error, value } = await this.redis.hgetall(key);
       if (!type) {
         // If there's no type, the key doesn't exist in cache.
         return null;
@@ -71,7 +71,7 @@ export class RedisCache {
    */
   async set(key: string, value: CachedResult): Promise<void> {
     try {
-      await this.redis.hSet(key, value);
+      await this.redis.hset(key, value);
     } catch (error) {
       throw new RedisCacheError('Failed to set cached result', key, error);
     }

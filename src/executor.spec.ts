@@ -1,4 +1,4 @@
-import { createClient, RedisClientType } from 'redis';
+import Client from 'ioredis';
 
 import {
   IdempotentExecutor,
@@ -8,13 +8,12 @@ import {
 import { DefaultErrorSerializer, JSONSerializer } from './serialization';
 
 describe('IdempotentExecutor', () => {
-  let redisClient: RedisClientType;
+  let redisClient: Client;
   let executor: IdempotentExecutor;
 
   beforeEach(async () => {
-    redisClient = createClient();
-    await redisClient.connect();
-    await redisClient.flushAll();
+    redisClient = new Client();
+    await redisClient.flushall();
 
     executor = new IdempotentExecutor(redisClient);
   });
@@ -77,7 +76,7 @@ describe('IdempotentExecutor', () => {
   it('should throw IdempotentExecutorError if getting cached result fails', async () => {
     const action = jest.fn().mockResolvedValue('action result');
     jest
-      .spyOn(redisClient, 'hGetAll')
+      .spyOn(redisClient, 'hgetall')
       .mockImplementation(() => Promise.reject(new Error('Redis error')));
 
     await expect(executor.run('key', action)).rejects.toThrow(
@@ -85,27 +84,11 @@ describe('IdempotentExecutor', () => {
     );
   });
 
-  it('should throw IdempotentExecutorError if acquiring lock fails', async () => {
-    // The current implementation of redis-lock does not throw an error when acquiring a lock fails.
-    // Instead, it retries indefinitely until it succeeds.
-    // Keeping this test since we handle the error in the IdempotentExecutor.
-    const action = jest.fn().mockResolvedValue('action result');
-    executor['lock'] = jest.fn().mockRejectedValue(new Error('Lock error'));
-
-    await expect(executor.run('key1', action)).rejects.toThrow(
-      IdempotentExecutorError,
-    );
-  });
-
   it('should throw IdempotentExecutorCriticalError if setting cached result fails', async () => {
     const action = jest.fn().mockResolvedValue('action result');
     jest
-      .spyOn(redisClient, 'hSet')
+      .spyOn(redisClient, 'hset')
       .mockImplementation(() => Promise.reject(new Error('Redis error')));
-    // Mocking the lock as it is calling the set method of the redis client which we have mocked above.
-    executor['lock'] = jest
-      .fn()
-      .mockResolvedValue(() => Promise.resolve(jest.fn()));
 
     await expect(executor.run('key1', action)).rejects.toThrow(
       IdempotentExecutorCriticalError,
@@ -164,7 +147,7 @@ describe('IdempotentExecutor', () => {
     expect(action).toHaveBeenCalledTimes(1);
   });
 
-  it('should timeout lock', async () => {
+  it('should timeout lock if action takes too long', async () => {
     const action = jest
       .fn()
       .mockImplementation(
@@ -175,13 +158,24 @@ describe('IdempotentExecutor', () => {
       );
 
     const promises = [
-      executor.run('key1', action, { timeout: 100 }),
-      executor.run('key1', action, { timeout: 100 }),
+      executor.run('key1', action, { timeout: 200 }),
+      executor.run('key1', action, { timeout: 200 }),
     ];
-    const results = await Promise.all(promises);
+    const results = await Promise.allSettled(promises);
 
-    results.forEach((result) => expect(result).toBe('action result'));
-    expect(action).toHaveBeenCalledTimes(2);
+    expect(results[0].status).toBe('fulfilled');
+    expect((results[0] as PromiseFulfilledResult<string>).value).toEqual(
+      'action result',
+    );
+
+    expect(results[1].status).toBe('rejected');
+    expect((results[1] as PromiseRejectedResult).reason).toEqual(
+      new IdempotentExecutorError(
+        'Failed to execute action idempotently',
+        'key1',
+      ),
+    );
+    expect(action).toHaveBeenCalledTimes(1);
   });
 
   it('should serialize value with custom serializer', async () => {

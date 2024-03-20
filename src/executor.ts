@@ -1,5 +1,5 @@
-import { RedisClientType } from 'redis';
-import redisLock, { DoneFn, LockFn } from 'redis-lock';
+import Client from 'ioredis';
+import Redlock from 'redlock';
 
 import {
   Serializer,
@@ -40,8 +40,22 @@ export class IdempotentExecutorCriticalError extends IdempotentExecutorError {
    * @param cause (Optional) The underlying error or reason for this critical error, if any.
    */
   constructor(message: string, idempotencyKey: string, cause?: unknown) {
-    super(message, idempotencyKey, cause);
+    super(
+      `Possibly non-idempotent execution: ${message}`,
+      idempotencyKey,
+      cause,
+    );
     this.name = 'IdempotentExecutorCriticalError';
+  }
+}
+
+/**
+ * Wraps an error that is being replayed.
+ */
+class ReplayedErrorWrapper extends Error {
+  constructor(public readonly origin: unknown) {
+    super('Replayed error');
+    this.name = 'ReplayedErrorWrapper';
   }
 }
 
@@ -58,18 +72,16 @@ interface RunOptions<T> {
  * Manages idempotency in asynchronous operations by leveraging Redis for storage and distributed locks.
  */
 export class IdempotentExecutor {
-  private lock: LockFn;
+  private redlock: Redlock;
   private cache: RedisCache;
 
   /**
    * Initializes a new instance of the IdempotentExecutor class.
    *
-   * Note: The Redis client must be connected using `await redis.connect()` before calling `run()`.
-   *
-   * @param {RedisClientType} redis - The Redis client to be used for managing state and locks.
+   * @param {Client} redis - The Redis client to be used for managing state and locks.
    */
-  constructor(redis: RedisClientType) {
-    this.lock = redisLock(redis);
+  constructor(redis: Client) {
+    this.redlock = new Redlock([redis]);
     this.cache = new RedisCache(redis);
   }
 
@@ -79,7 +91,7 @@ export class IdempotentExecutor {
    * @param {string} idempotencyKey - A unique key identifying the operation to ensure idempotency.
    * @param {() => Promise<T>} action - An asynchronous function representing the operation to execute idempotently.
    * @param {Partial<RunOptions<T>>} options - Optional. Configuration options for the execution.
-   *    @property {number} options.timeout - Optional. The maximum duration, in milliseconds, allowed for the operation to complete. If the operation does not finish within this timeframe, control is transferred to the next execution in the queue. Make sure the timeout is sufficiently long to accommodate the expected completion time of your operation. Defaults to 60 seconds.
+   *    @property {number} options.timeout - Optional. The maximum duration, in milliseconds, that the concurrent operations will wait for the in-progress one to complete after which they will be terminated. Defaults to 60 seconds.
    *    @property {Serializer<T>} options.valueSerializer - Optional. Responsible for serializing the successful result of the action. Defaults to JSON serialization.
    *    @property {Serializer<Error>} options.errorSerializer - Optional. Used for serializing errors that may occur during the action's execution. Defaults to a error serializer that uses serialize-error-cjs.
    * @returns {Promise<T>} The result of the executed action.
@@ -95,102 +107,113 @@ export class IdempotentExecutor {
     const valueSerializer = options?.valueSerializer ?? new JSONSerializer<T>();
     const errorSerializer =
       options?.errorSerializer ?? new DefaultErrorSerializer();
-    const cacheKey = `result:${idempotencyKey}`;
+    const cacheKey = `idempotent-executor-result:${idempotencyKey}`;
 
-    let done: DoneFn;
     try {
-      // Attempt to acquire a lock using the idempotency key and specified timeout.
-      done = await this.lock(`lock:${idempotencyKey}`, timeout);
-    } catch (error) {
-      throw new IdempotentExecutorError(
-        'Failed to acquire lock',
-        idempotencyKey,
-        error,
-      );
-    }
+      return await this.redlock.using<T>(
+        [idempotencyKey],
+        timeout,
+        {
+          retryCount: timeout / 200,
+          retryDelay: 200,
+          automaticExtensionThreshold: timeout / 2,
+        },
+        async () => {
+          // Attempt to retrieve a cached result for the idempotency key.
+          let cachedResult: CachedResult | null;
+          try {
+            cachedResult = await this.cache.get(cacheKey);
+          } catch (error) {
+            throw new IdempotentExecutorError(
+              'Failed to get cached result',
+              idempotencyKey,
+              error,
+            );
+          }
 
-    let cachedResult: CachedResult | null;
-    try {
-      // Attempt to retrieve a cached result for the idempotency key.
-      cachedResult = await this.cache.get(cacheKey);
-    } catch (error) {
-      await done();
-      throw new IdempotentExecutorError(
-        'Failed to get cached result',
-        idempotencyKey,
-        error,
-      );
-    }
+          if (cachedResult) {
+            if (cachedResult.type === 'error') {
+              let cachedError: unknown;
+              try {
+                cachedError = errorSerializer.deserialize(cachedResult.error);
+              } catch (error) {
+                throw new IdempotentExecutorError(
+                  'Failed to parse cached error',
+                  idempotencyKey,
+                  error,
+                );
+              }
+              // Replay the cached error.
+              throw new ReplayedErrorWrapper(cachedError);
+            }
 
-    if (cachedResult) {
-      if (cachedResult.type === 'error') {
-        let cachedError: unknown;
-        try {
-          cachedError = errorSerializer.deserialize(cachedResult.error);
-        } catch (error) {
-          throw new IdempotentExecutorError(
-            'Failed to parse cached error',
-            idempotencyKey,
-            error,
-          );
-        } finally {
-          await done();
-        }
-        // Replay the cached error.
-        throw cachedError;
-      } else {
-        try {
-          // Parse and replay the cached result.
-          return valueSerializer.deserialize(cachedResult.value);
-        } catch (error) {
-          throw new IdempotentExecutorError(
-            'Failed to parse cached value',
-            idempotencyKey,
-            error,
-          );
-        } finally {
-          await done();
-        }
+            try {
+              // Parse and replay the cached result.
+              return valueSerializer.deserialize(cachedResult.value);
+            } catch (error) {
+              throw new IdempotentExecutorError(
+                'Failed to parse cached value',
+                idempotencyKey,
+                error,
+              );
+            }
+          }
+
+          // Execute the action.
+          let actionResult: T | Error;
+          try {
+            actionResult = await action();
+          } catch (error) {
+            actionResult =
+              error instanceof Error
+                ? error
+                : new Error(`Unknown error: ${error}`);
+          }
+
+          // Cache the result of the action and return/throw it.
+          try {
+            if (actionResult instanceof Error) {
+              await this.cache.set(cacheKey, {
+                type: 'error',
+                error: errorSerializer.serialize(actionResult),
+              });
+            } else {
+              await this.cache.set(cacheKey, {
+                type: 'value',
+                value: valueSerializer.serialize(actionResult),
+              });
+
+              // Return the action result.
+              return actionResult;
+            }
+          } catch (error) {
+            // If caching the result fails, throw a critical error as it might lead to non-idempotent executions.
+            throw new IdempotentExecutorCriticalError(
+              'Failed to set cached result',
+              idempotencyKey,
+              error,
+            );
+          }
+
+          // Throw the action error.
+          throw new ReplayedErrorWrapper(actionResult);
+        },
+      );
+    } catch (error) {
+      if (error instanceof ReplayedErrorWrapper) {
+        throw error.origin;
       }
-    }
-
-    // Execute the action.
-    let actionResult: T | Error;
-    try {
-      actionResult = await action();
-    } catch (error) {
-      actionResult =
-        error instanceof Error ? error : new Error(`Unknown error: ${error}`);
-    }
-
-    // Cache the result of the action and return/throw it.
-    try {
-      if (actionResult instanceof Error) {
-        await this.cache.set(cacheKey, {
-          type: 'error',
-          error: errorSerializer.serialize(actionResult),
-        });
-      } else {
-        await this.cache.set(cacheKey, {
-          type: 'value',
-          value: valueSerializer.serialize(actionResult),
-        });
-
-        // Return the action result.
-        return actionResult;
+      if (
+        error instanceof IdempotentExecutorError ||
+        error instanceof IdempotentExecutorCriticalError
+      ) {
+        throw error;
       }
-    } catch (error) {
-      // If caching the result fails, throw a critical error as it might lead to non-idempotent executions.
-      throw new IdempotentExecutorCriticalError(
-        'Failed to set cached result',
+      throw new IdempotentExecutorError(
+        'Failed to execute action idempotently',
         idempotencyKey,
         error,
       );
-    } finally {
-      await done();
     }
-
-    // Throw the action error.
-    throw actionResult;
   }
 }

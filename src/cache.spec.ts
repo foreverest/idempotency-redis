@@ -1,23 +1,23 @@
 import { CachedResult, RedisCache, RedisCacheError } from './cache';
-import { RedisClientType } from 'redis';
+import Client from 'ioredis';
 
 describe('RedisCache', () => {
-  let redisMock: Partial<RedisClientType>;
+  let redisMock: Partial<Client>;
   let cache: RedisCache;
 
   beforeEach(() => {
     redisMock = {
-      hGetAll: jest.fn(),
-      hSet: jest.fn(),
+      hgetall: jest.fn(),
+      hset: jest.fn(),
     };
-    cache = new RedisCache(redisMock as RedisClientType);
+    cache = new RedisCache(redisMock as Client);
   });
 
   describe('get method', () => {
     it('returns correct CachedResult when key exists with type "value"', async () => {
       const mockKey = 'testKey';
       const mockValue = 'some value';
-      (redisMock.hGetAll as jest.Mock).mockResolvedValue({
+      (redisMock.hgetall as jest.Mock).mockResolvedValue({
         type: 'value',
         value: mockValue,
       });
@@ -30,7 +30,7 @@ describe('RedisCache', () => {
     it('returns correct CachedResult when key exists with type "error"', async () => {
       const mockKey = 'testKey';
       const mockError = 'some error';
-      (redisMock.hGetAll as jest.Mock).mockResolvedValue({
+      (redisMock.hgetall as jest.Mock).mockResolvedValue({
         type: 'error',
         error: mockError,
       });
@@ -42,7 +42,7 @@ describe('RedisCache', () => {
 
     it('returns null if the key does not exist', async () => {
       const mockKey = 'testKey';
-      (redisMock.hGetAll as jest.Mock).mockResolvedValue({});
+      (redisMock.hgetall as jest.Mock).mockResolvedValue({});
 
       const result = await cache.get(mockKey);
 
@@ -52,7 +52,7 @@ describe('RedisCache', () => {
     it('throws RedisCacheError when Redis operation fails', async () => {
       const mockKey = 'testKey';
       const mockError = new Error('Redis error');
-      (redisMock.hGetAll as jest.Mock).mockRejectedValue(mockError);
+      (redisMock.hgetall as jest.Mock).mockRejectedValue(mockError);
 
       await expect(cache.get(mockKey)).rejects.toThrow(RedisCacheError);
     });
@@ -62,17 +62,17 @@ describe('RedisCache', () => {
     it('successfully sets a value', async () => {
       const mockKey = 'testKey';
       const mockValue: CachedResult = { type: 'value', value: 'some value' };
-      (redisMock.hSet as jest.Mock).mockResolvedValue(1);
+      (redisMock.hset as jest.Mock).mockResolvedValue(1);
 
       await expect(cache.set(mockKey, mockValue)).resolves.toBeUndefined();
-      expect(redisMock.hSet).toHaveBeenCalledWith(mockKey, mockValue);
+      expect(redisMock.hset).toHaveBeenCalledWith(mockKey, mockValue);
     });
 
     it('throws RedisCacheError when Redis operation fails', async () => {
       const mockKey = 'testKey';
       const mockValue: CachedResult = { type: 'error', error: 'some error' };
       const mockError = new Error('Redis error');
-      (redisMock.hSet as jest.Mock).mockRejectedValue(mockError);
+      (redisMock.hset as jest.Mock).mockRejectedValue(mockError);
 
       await expect(cache.set(mockKey, mockValue)).rejects.toThrow(
         RedisCacheError,
