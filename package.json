@@ -1,6 +1,6 @@
 {
   "name": "idempotency-redis",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Idempotency guarantee via Redis",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
