@@ -1,4 +1,4 @@
-import Client from 'ioredis';
+import Client from 'ioredis-mock';
 
 import {
   IdempotentExecutor,
@@ -8,13 +8,12 @@ import {
 import { DefaultErrorSerializer, JSONSerializer } from './serialization';
 
 describe('IdempotentExecutor', () => {
-  let redisClient: Client;
+  let redisClient = new Client();
   let executor: IdempotentExecutor;
 
   beforeEach(async () => {
     redisClient = new Client();
     await redisClient.flushall();
-
     executor = new IdempotentExecutor(redisClient);
   });
 
