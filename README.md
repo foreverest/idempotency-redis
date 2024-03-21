@@ -126,22 +126,6 @@ class CustomSerializer extends JSONSerializer<CustomClass | number> {
 
 In this example, CustomSerializer demonstrates how to serialize CustomClass instances into a custom string format and deserialize them back into their original class types, thereby preserving crucial type information.
 
-## Testing
-
-Run the tests with:
-
-```bash
-npm test
-```
-
-Ensure you have a Redis instance running. To quickly start Redis with Docker, use:
-
-```bash
-docker run -p 6379:6379 -d redis
-```
-
-This sets up Redis locally on port 6379. After testing, stop the container if needed.
-
 ## Contributing
 Contributions are welcome! Please open an issue or submit a pull request on GitHub.
 
