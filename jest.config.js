@@ -6,5 +6,10 @@ module.exports = {
   verbose: true,
   coverageDirectory: 'coverage',
   collectCoverage: true,
-  collectCoverageFrom: ['src/**/*.ts', '!src/**/*.d.ts', '!src/**/*.spec.ts'],
+  collectCoverageFrom: [
+    'src/**/*.ts',
+    '!src/**/*.d.ts',
+    '!src/**/*.spec.ts',
+    '!src/index.ts',
+  ],
 };

@@ -83,6 +83,28 @@ describe('IdempotentExecutor', () => {
     );
   });
 
+  it('should throw IdempotentExecutorError if deserializing cached result fails', async () => {
+    const action = jest.fn().mockResolvedValue('action result');
+    jest
+      .spyOn(redisClient, 'hgetall')
+      .mockImplementation(() => Promise.resolve({ type: 'value', value: '.' })); // Invalid JSON.
+
+    await expect(executor.run('key', action)).rejects.toThrow(
+      IdempotentExecutorError,
+    );
+  });
+
+  it('should throw IdempotentExecutorError if deserializing cached error fails', async () => {
+    const action = jest.fn().mockResolvedValue('action result');
+    jest
+      .spyOn(redisClient, 'hgetall')
+      .mockImplementation(() => Promise.resolve({ type: 'error', error: '.' })); // Invalid JSON.
+
+    await expect(executor.run('key', action)).rejects.toThrow(
+      IdempotentExecutorError,
+    );
+  });
+
   it('should throw IdempotentExecutorCriticalError if setting cached result fails', async () => {
     const action = jest.fn().mockResolvedValue('action result');
     jest
@@ -104,7 +126,7 @@ describe('IdempotentExecutor', () => {
     expect(action).toHaveBeenCalledTimes(1);
   });
 
-  it('should throw custom errors as a plain Error instances', async () => {
+  it('should throw custom errors as plain Error instances', async () => {
     class CustomError extends Error {
       constructor(message: string) {
         super(message);
