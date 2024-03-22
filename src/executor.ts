@@ -174,7 +174,7 @@ export class IdempotentExecutor {
             actionResult =
               error instanceof Error
                 ? error
-                : new Error(`Unknown error: ${error}`);
+                : new Error(`Non-error thrown: ${error}`);
           }
 
           // Cache the result of the action and return/throw it.

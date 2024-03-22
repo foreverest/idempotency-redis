@@ -137,15 +137,15 @@ describe('IdempotentExecutor', () => {
     expect(action).toHaveBeenCalledTimes(1);
   });
 
-  it('should throw an "unknown error" if the action threw a non-Error object', async () => {
-    const error = 'action failed';
+  it('should throw a "Non-error thrown" if the action threw a non-Error object', async () => {
+    const error = 42;
     const action = jest.fn().mockRejectedValue(error);
 
     await expect(executor.run('key1', action)).rejects.toThrow(
-      new Error('Unknown error: action failed'),
+      new Error('Non-error thrown: 42'),
     );
     await expect(executor.run('key1', action)).rejects.toThrow(
-      new Error('Unknown error: action failed'),
+      new Error('Non-error thrown: 42'),
     );
 
     expect(action).toHaveBeenCalledTimes(1);
