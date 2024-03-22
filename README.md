@@ -98,25 +98,28 @@ By default, `idempotency-redis` uses the `JSONSerializer` for values, utilizing 
 To ensure that your serialized data maintains as much of its original structure and type information as possible, you can define and use custom serializers. These custom serializers allow for the precise control over how objects are transformed into strings and subsequently reconstituted. Below is an example illustrating how to create and use a custom serializer capable of handling both instances of a `CustomClass` and numeric values:
 
 ```ts
-class CustomClass {}
+class CustomClass {
+  constructor(public property: string) {}
+}
 
 // A serializer capable of handling both CustomClass instances and numbers.
 class CustomSerializer extends JSONSerializer<CustomClass | number> {
   serialize(value: CustomClass | number): string {
     if (value instanceof CustomClass) {
       // Implement a custom serialization format that converts the value to a string.
-      // This could be JSON, base64, a custom format, etc., as long as you can accurately
+      // This could be JSON, YAML, or any custom format as long as you can accurately
       // deserialize it back to the original value.
-      return 'format:custom-class';
+      return `custom-class:${value.property}`;
     }
     // For numbers, defer to the base class's serialization logic.
     return super.serialize(value);
   }
 
   deserialize(value: string): CustomClass | number {
-    if (value === 'format:custom-class') {
+    if (value.startsWith('custom-class:')) {
       // Custom logic to reconstruct a CustomClass instance.
-      return new CustomClass();
+      const property = value.slice('custom-class:'.length);
+      return new CustomClass(property);
     }
     // Use the base class's deserialization logic for numbers.
     return super.deserialize(value);
