@@ -52,6 +52,17 @@ describe('IdempotentExecutor', () => {
     expect(action).toHaveBeenCalledTimes(2);
   });
 
+  it('should replay undefined value', async () => {
+    const action = jest.fn().mockResolvedValue(undefined);
+
+    const result1 = await executor.run('key1', action);
+    const result2 = await executor.run('key1', action);
+
+    expect(result1).toBe(undefined);
+    expect(result2).toBe(undefined);
+    expect(action).toHaveBeenCalledTimes(1);
+  });
+
   it('should handle concurrent action runs with successful result', async () => {
     const action = jest
       .fn()
