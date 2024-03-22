@@ -1,4 +1,4 @@
-# idempotency-redis
+# idempotency-redis &middot; [![npm version](https://img.shields.io/npm/v/idempotency-redis.svg?style=flat-square)](https://www.npmjs.com/package/idempotency-redis) [![npm](https://img.shields.io/npm/dm/idempotency-redis.svg?style=flat-square)](https://npm-stat.com/charts.html?package=idempotency-redis)
 
 `idempotency-redis` is a Node.js package designed to ensure idempotent operations in distributed systems using Redis. It leverages Redis for state management and distributed locks, providing a straightforward way to execute operations exactly once. This package is particularly useful for applications that require idempotency guarantees, such as financial transactions, API request processing, and more.
 
