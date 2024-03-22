@@ -8,7 +8,7 @@ export type CachedResult =
     }
   | {
       type: 'value'; // Represents a successful state with a corresponding serialized value.
-      value: string;
+      value?: string;
     };
 
 // Custom error class for handling Redis cache-related errors.
@@ -49,15 +49,14 @@ export class RedisCache {
         // If there's no type, the key doesn't exist in cache.
         return null;
       }
-      return type === 'error'
-        ? {
-            type: 'error',
-            error,
-          }
-        : {
-            type: 'value',
-            value,
-          };
+      if (type === 'error') {
+        return {
+          type: 'error',
+          error,
+        };
+      }
+
+      return value ? { type: 'value', value } : { type: 'value' };
     } catch (error) {
       throw new RedisCacheError('Failed to get cached result', key, error);
     }

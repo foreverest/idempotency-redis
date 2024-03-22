@@ -147,6 +147,13 @@ export class IdempotentExecutor {
               throw new ReplayedErrorWrapper(cachedError);
             }
 
+            if (cachedResult.value === undefined) {
+              // If `undefined` does not satisfy the type T,
+              // this means the action also broke the type contract.
+              // So, we're simply replaying this here too.
+              return undefined as T;
+            }
+
             try {
               // Parse and replay the cached result.
               return valueSerializer.deserialize(cachedResult.value);

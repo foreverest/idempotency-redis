@@ -26,6 +26,15 @@ describe('RedisCache', () => {
       expect(result).toEqual({ type: 'value', value: mockValue });
     });
 
+    it('returns correct CachedResult when value is undefined', async () => {
+      const mockKey = 'testKey';
+      redisClient.hset(mockKey, 'type', 'value');
+
+      const result = await cache.get(mockKey);
+
+      expect(result).toEqual({ type: 'value' });
+    });
+
     it('returns correct CachedResult when key exists with type "error"', async () => {
       const mockKey = 'testKey';
       const mockError = 'some error';
@@ -57,6 +66,14 @@ describe('RedisCache', () => {
     it('successfully sets a value', async () => {
       const mockKey = 'testKey';
       const mockValue: CachedResult = { type: 'value', value: 'some value' };
+
+      await expect(cache.set(mockKey, mockValue)).resolves.toBeUndefined();
+      expect(await redisClient.hgetall(mockKey)).toEqual(mockValue);
+    });
+
+    it('successfully sets undefined value', async () => {
+      const mockKey = 'testKey';
+      const mockValue: CachedResult = { type: 'value' };
 
       await expect(cache.set(mockKey, mockValue)).resolves.toBeUndefined();
       expect(await redisClient.hgetall(mockKey)).toEqual(mockValue);
