@@ -66,6 +66,10 @@ interface RunOptions<T> {
   timeout: number;
   valueSerializer: Serializer<T>;
   errorSerializer: Serializer<Error>;
+  onActionSuccess: (idempotencyKey: string, value: T) => T;
+  onActionError: (idempotencyKey: string, error: Error) => Error;
+  onSuccessReplay: (idempotencyKey: string, value: T) => T;
+  onErrorReplay: (idempotencyKey: string, error: Error) => Error;
 }
 
 /**
@@ -94,6 +98,10 @@ export class IdempotentExecutor {
    *    @property {number} options.timeout - Optional. The maximum duration, in milliseconds, that the concurrent operations will wait for the in-progress one to complete after which they will be terminated. Defaults to 60 seconds.
    *    @property {Serializer<T>} options.valueSerializer - Optional. Responsible for serializing the successful result of the action. Defaults to JSON serialization.
    *    @property {Serializer<Error>} options.errorSerializer - Optional. Used for serializing errors that may occur during the action's execution. Defaults to a error serializer that uses serialize-error-cjs.
+   *    @property {(idempotencyKey: string, value: T) => T} options.onActionSuccess - Optional. A callback that is invoked when the action is executed successfully. It receives the idempotency key and the result of the action, and should return the result to be returned by the executor.
+   *    @property {(idempotencyKey: string, error: Error) => Error} options.onActionError - Optional. A callback that is invoked when the action fails during execution. It receives the idempotency key and the error that occurred, and should return the error to be thrown by the executor.
+   *    @property {(idempotencyKey: string, value: T) => T} options.onSuccessReplay - Optional. A callback that is invoked when a successful action is replayed. It receives the idempotency key and the result of the action, and should return the result to be returned by the executor.
+   *    @property {(idempotencyKey: string, error: Error) => Error} options.onErrorReplay - Optional. A callback that is invoked when a failed action is replayed. It receives the idempotency key and the error that occurred, and should return the error to be thrown by the executor.
    * @returns {Promise<T>} The result of the executed action.
    * @throws {IdempotentExecutorError} If acquiring the lock or retrieving the cached result fails.
    * @throws {IdempotentExecutorCriticalError} If saving the result to cache fails, potentially leading to non-idempotent executions.
@@ -133,7 +141,7 @@ export class IdempotentExecutor {
 
           if (cachedResult) {
             if (cachedResult.type === 'error') {
-              let cachedError: unknown;
+              let cachedError: Error;
               try {
                 cachedError = errorSerializer.deserialize(cachedResult.error);
               } catch (error) {
@@ -143,6 +151,22 @@ export class IdempotentExecutor {
                   error,
                 );
               }
+
+              if (options?.onErrorReplay) {
+                try {
+                  cachedError = options.onErrorReplay(
+                    idempotencyKey,
+                    cachedError,
+                  );
+                } catch (error) {
+                  throw new IdempotentExecutorError(
+                    'Failed to execute onErrorReplay callback',
+                    idempotencyKey,
+                    error,
+                  );
+                }
+              }
+
               // Replay the cached error.
               throw new ReplayedErrorWrapper(cachedError);
             }
@@ -154,9 +178,12 @@ export class IdempotentExecutor {
               return undefined as T;
             }
 
+            let deserializedValue: T;
             try {
               // Parse and replay the cached result.
-              return valueSerializer.deserialize(cachedResult.value);
+              deserializedValue = valueSerializer.deserialize(
+                cachedResult.value,
+              );
             } catch (error) {
               throw new IdempotentExecutorError(
                 'Failed to parse cached value',
@@ -164,6 +191,24 @@ export class IdempotentExecutor {
                 error,
               );
             }
+
+            if (options?.onSuccessReplay) {
+              try {
+                return options.onSuccessReplay(
+                  idempotencyKey,
+                  deserializedValue,
+                );
+              } catch (error) {
+                throw new IdempotentExecutorError(
+                  'Failed to execute onSuccessReplay callback',
+                  idempotencyKey,
+                  error,
+                );
+              }
+            }
+
+            // Replay the cached value.
+            return deserializedValue;
           }
 
           // Execute the action.
@@ -189,9 +234,6 @@ export class IdempotentExecutor {
                 type: 'value',
                 value: valueSerializer.serialize(actionResult),
               });
-
-              // Return the action result.
-              return actionResult;
             }
           } catch (error) {
             // If caching the result fails, throw a critical error as it might lead to non-idempotent executions.
@@ -202,8 +244,43 @@ export class IdempotentExecutor {
             );
           }
 
-          // Throw the action error.
-          throw new ReplayedErrorWrapper(actionResult);
+          if (actionResult instanceof Error) {
+            if (options?.onActionError) {
+              try {
+                actionResult = options.onActionError(
+                  idempotencyKey,
+                  actionResult,
+                );
+              } catch (error) {
+                throw new IdempotentExecutorError(
+                  'Failed to execute onActionError callback',
+                  idempotencyKey,
+                  error,
+                );
+              }
+            }
+
+            // Throw the action error.
+            throw new ReplayedErrorWrapper(actionResult);
+          }
+
+          if (options?.onActionSuccess) {
+            try {
+              actionResult = options.onActionSuccess(
+                idempotencyKey,
+                actionResult,
+              );
+            } catch (error) {
+              throw new IdempotentExecutorError(
+                'Failed to execute onActionSuccess callback',
+                idempotencyKey,
+                error,
+              );
+            }
+          }
+
+          // Return the action result.
+          return actionResult;
         },
       );
     } catch (error) {

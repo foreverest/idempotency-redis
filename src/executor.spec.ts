@@ -105,6 +105,89 @@ describe('IdempotentExecutor', () => {
     );
   });
 
+  it('should throw IdempotentExecutorError if onSuccessReplay fails', async () => {
+    const action = jest.fn();
+    const onSuccessReplay = jest.fn().mockImplementation(() => {
+      throw new Error('onSuccessReplay error');
+    });
+    jest
+      .spyOn(redisClient, 'hgetall')
+      .mockResolvedValue({ type: 'value', value: '"action result"' });
+
+    await expect(
+      executor.run('key', action, { onSuccessReplay }),
+    ).rejects.toThrow(IdempotentExecutorError);
+
+    expect(action).toHaveBeenCalledTimes(0);
+    expect(onSuccessReplay).toHaveBeenCalledWith('key', 'action result');
+  });
+
+  it('should return whatever onSuccessReplay returns', async () => {
+    const action = jest.fn();
+    const onSuccessReplay = jest
+      .fn()
+      .mockImplementation(() => 'onSuccessReplay result');
+    jest
+      .spyOn(redisClient, 'hgetall')
+      .mockResolvedValue({ type: 'value', value: '"action result"' });
+
+    const result = await executor.run('key', action, { onSuccessReplay });
+
+    expect(result).toBe('onSuccessReplay result');
+    expect(action).toHaveBeenCalledTimes(0);
+    expect(onSuccessReplay).toHaveBeenCalledWith('key', 'action result');
+  });
+
+  it('should throw IdempotentExecutorError if onErrorReplay fails', async () => {
+    const action = jest.fn();
+    const onErrorReplay = jest.fn().mockImplementation(() => {
+      throw new Error('onErrorReplay error');
+    });
+    jest.spyOn(redisClient, 'hgetall').mockResolvedValue({
+      type: 'error',
+      error: JSON.stringify({
+        name: 'Error',
+        message: 'action error',
+        stack: 'stack',
+      }),
+    });
+
+    await expect(
+      executor.run('key', action, { onErrorReplay }),
+    ).rejects.toThrow(IdempotentExecutorError);
+
+    expect(action).toHaveBeenCalledTimes(0);
+    expect(onErrorReplay).toHaveBeenCalledWith(
+      'key',
+      new Error('action error'),
+    );
+  });
+
+  it('should throw whatever onErrorReplay returns', async () => {
+    const action = jest.fn();
+    const onErrorReplay = jest
+      .fn()
+      .mockImplementation(() => new Error('onErrorReplay error'));
+    jest.spyOn(redisClient, 'hgetall').mockResolvedValue({
+      type: 'error',
+      error: JSON.stringify({
+        name: 'Error',
+        message: 'action error',
+        stack: 'stack',
+      }),
+    });
+
+    await expect(
+      executor.run('key', action, { onErrorReplay }),
+    ).rejects.toThrow('onErrorReplay error');
+
+    expect(action).toHaveBeenCalledTimes(0);
+    expect(onErrorReplay).toHaveBeenCalledWith(
+      'key',
+      new Error('action error'),
+    );
+  });
+
   it('should throw IdempotentExecutorError if deserializing cached error fails', async () => {
     const action = jest.fn().mockResolvedValue('action result');
     jest
@@ -124,6 +207,67 @@ describe('IdempotentExecutor', () => {
 
     await expect(executor.run('key1', action)).rejects.toThrow(
       IdempotentExecutorCriticalError,
+    );
+  });
+
+  it('should throw IdempotentExecutorError if onActionSuccess fails', async () => {
+    const action = jest.fn().mockResolvedValue('action result');
+    const onActionSuccess = jest.fn().mockImplementation(() => {
+      throw new Error('onActionSuccess error');
+    });
+
+    await expect(
+      executor.run('key', action, { onActionSuccess }),
+    ).rejects.toThrow(IdempotentExecutorError);
+
+    expect(action).toHaveBeenCalledTimes(1);
+    expect(onActionSuccess).toHaveBeenCalledWith('key', 'action result');
+  });
+
+  it('should return whatever onActionSuccess returns', async () => {
+    const action = jest.fn().mockResolvedValue('action result');
+    const onActionSuccess = jest
+      .fn()
+      .mockImplementation(() => 'onActionSuccess result');
+
+    const result = await executor.run('key', action, { onActionSuccess });
+
+    expect(result).toBe('onActionSuccess result');
+    expect(action).toHaveBeenCalledTimes(1);
+    expect(onActionSuccess).toHaveBeenCalledWith('key', 'action result');
+  });
+
+  it('should throw IdempotentExecutorError if onActionError fails', async () => {
+    const action = jest.fn().mockRejectedValue(new Error('action error'));
+    const onActionError = jest.fn().mockImplementation(() => {
+      throw new Error('onActionError error');
+    });
+
+    await expect(
+      executor.run('key', action, { onActionError }),
+    ).rejects.toThrow(IdempotentExecutorError);
+
+    expect(action).toHaveBeenCalledTimes(1);
+    expect(onActionError).toHaveBeenCalledWith(
+      'key',
+      new Error('action error'),
+    );
+  });
+
+  it('should throw whatever onActionError returns', async () => {
+    const action = jest.fn().mockRejectedValue(new Error('action error'));
+    const onActionError = jest
+      .fn()
+      .mockImplementation(() => new Error('onActionError error'));
+
+    await expect(
+      executor.run('key', action, { onActionError }),
+    ).rejects.toThrow('onActionError error');
+
+    expect(action).toHaveBeenCalledTimes(1);
+    expect(onActionError).toHaveBeenCalledWith(
+      'key',
+      new Error('action error'),
     );
   });
 
