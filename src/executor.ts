@@ -127,48 +127,21 @@ export class IdempotentExecutor {
           automaticExtensionThreshold: timeout / 2,
         },
         async () => {
-          // Attempt to retrieve a cached result for the idempotency key.
-          let cachedResult: CachedResult | null;
-          try {
-            cachedResult = await this.cache.get(cacheKey);
-          } catch (error) {
-            throw new IdempotentExecutorError(
-              'Failed to get cached result',
-              idempotencyKey,
-              error,
-            );
-          }
+          // Retrieve the cached result of the action.
+          const cachedResult = await this.getCachedResult(
+            idempotencyKey,
+            cacheKey,
+          );
 
+          // If the action has already been executed, replay the result.
           if (cachedResult) {
             if (cachedResult.type === 'error') {
-              let cachedError: Error;
-              try {
-                cachedError = errorSerializer.deserialize(cachedResult.error);
-              } catch (error) {
-                throw new IdempotentExecutorError(
-                  'Failed to parse cached error',
-                  idempotencyKey,
-                  error,
-                );
-              }
-
-              if (options?.onErrorReplay) {
-                try {
-                  cachedError = options.onErrorReplay(
-                    idempotencyKey,
-                    cachedError,
-                  );
-                } catch (error) {
-                  throw new IdempotentExecutorError(
-                    'Failed to execute onErrorReplay callback',
-                    idempotencyKey,
-                    error,
-                  );
-                }
-              }
-
-              // Replay the cached error.
-              throw new ReplayedErrorWrapper(cachedError);
+              this.replayCachedError(
+                idempotencyKey,
+                errorSerializer,
+                cachedResult.error,
+                options?.onErrorReplay,
+              );
             }
 
             if (cachedResult.value === undefined) {
@@ -178,37 +151,12 @@ export class IdempotentExecutor {
               return undefined as T;
             }
 
-            let deserializedValue: T;
-            try {
-              // Parse and replay the cached result.
-              deserializedValue = valueSerializer.deserialize(
-                cachedResult.value,
-              );
-            } catch (error) {
-              throw new IdempotentExecutorError(
-                'Failed to parse cached value',
-                idempotencyKey,
-                error,
-              );
-            }
-
-            if (options?.onSuccessReplay) {
-              try {
-                return options.onSuccessReplay(
-                  idempotencyKey,
-                  deserializedValue,
-                );
-              } catch (error) {
-                throw new IdempotentExecutorError(
-                  'Failed to execute onSuccessReplay callback',
-                  idempotencyKey,
-                  error,
-                );
-              }
-            }
-
-            // Replay the cached value.
-            return deserializedValue;
+            return this.replayCachedValue(
+              idempotencyKey,
+              valueSerializer,
+              cachedResult.value,
+              options?.onSuccessReplay,
+            );
           }
 
           // Execute the action.
@@ -222,65 +170,30 @@ export class IdempotentExecutor {
                 : new Error(`Non-error thrown: ${error}`);
           }
 
-          // Cache the result of the action and return/throw it.
-          try {
-            if (actionResult instanceof Error) {
-              await this.cache.set(cacheKey, {
-                type: 'error',
-                error: errorSerializer.serialize(actionResult),
-              });
-            } else {
-              await this.cache.set(cacheKey, {
-                type: 'value',
-                value: valueSerializer.serialize(actionResult),
-              });
-            }
-          } catch (error) {
-            // If caching the result fails, throw a critical error as it might lead to non-idempotent executions.
-            throw new IdempotentExecutorCriticalError(
-              'Failed to set cached result',
+          // Cache the result of the action.
+          await this.cacheResult(
+            idempotencyKey,
+            cacheKey,
+            actionResult,
+            valueSerializer,
+            errorSerializer,
+          );
+
+          // If the action resulted in an error, throw it.
+          if (actionResult instanceof Error) {
+            this.throwError(
               idempotencyKey,
-              error,
+              actionResult,
+              options?.onActionError,
             );
           }
 
-          if (actionResult instanceof Error) {
-            if (options?.onActionError) {
-              try {
-                actionResult = options.onActionError(
-                  idempotencyKey,
-                  actionResult,
-                );
-              } catch (error) {
-                throw new IdempotentExecutorError(
-                  'Failed to execute onActionError callback',
-                  idempotencyKey,
-                  error,
-                );
-              }
-            }
-
-            // Throw the action error.
-            throw new ReplayedErrorWrapper(actionResult);
-          }
-
-          if (options?.onActionSuccess) {
-            try {
-              actionResult = options.onActionSuccess(
-                idempotencyKey,
-                actionResult,
-              );
-            } catch (error) {
-              throw new IdempotentExecutorError(
-                'Failed to execute onActionSuccess callback',
-                idempotencyKey,
-                error,
-              );
-            }
-          }
-
-          // Return the action result.
-          return actionResult;
+          // Return the result of the action.
+          return this.returnResult(
+            idempotencyKey,
+            actionResult,
+            options?.onActionSuccess,
+          );
         },
       );
     } catch (error) {
@@ -299,5 +212,173 @@ export class IdempotentExecutor {
         error,
       );
     }
+  }
+
+  /**
+   * Retrieves the cached result of an idempotent operation.
+   */
+  private async getCachedResult(
+    idempotencyKey: string,
+    cacheKey: string,
+  ): Promise<CachedResult | null> {
+    try {
+      return await this.cache.get(cacheKey);
+    } catch (error) {
+      throw new IdempotentExecutorError(
+        'Failed to get cached result',
+        idempotencyKey,
+        error,
+      );
+    }
+  }
+
+  /**
+   * Replays a cached error, potentially transforming it using a callback.
+   */
+  private replayCachedError(
+    idempotencyKey: string,
+    errorSerializer: Serializer<Error>,
+    serializedError: string,
+    onErrorReplay?: (idempotencyKey: string, error: Error) => Error,
+  ): never {
+    let error: Error;
+    try {
+      error = errorSerializer.deserialize(serializedError);
+    } catch (error) {
+      throw new IdempotentExecutorError(
+        'Failed to parse cached error',
+        idempotencyKey,
+        error,
+      );
+    }
+
+    if (onErrorReplay) {
+      try {
+        error = onErrorReplay(idempotencyKey, error);
+      } catch (error) {
+        throw new IdempotentExecutorError(
+          'Failed to execute onErrorReplay callback',
+          idempotencyKey,
+          error,
+        );
+      }
+    }
+
+    throw new ReplayedErrorWrapper(error);
+  }
+
+  /**
+   * Replays a cached value, potentially transforming it using a callback.
+   */
+  private replayCachedValue<T>(
+    idempotencyKey: string,
+    valueSerializer: Serializer<T>,
+    serializedValue: string,
+    onSuccessReplay?: (idempotencyKey: string, value: T) => T,
+  ): T {
+    let value: T;
+    try {
+      value = valueSerializer.deserialize(serializedValue);
+    } catch (error) {
+      throw new IdempotentExecutorError(
+        'Failed to parse cached value',
+        idempotencyKey,
+        error,
+      );
+    }
+
+    if (onSuccessReplay) {
+      try {
+        value = onSuccessReplay(idempotencyKey, value);
+      } catch (error) {
+        throw new IdempotentExecutorError(
+          'Failed to execute onSuccessReplay callback',
+          idempotencyKey,
+          error,
+        );
+      }
+    }
+
+    return value;
+  }
+
+  /**
+   * Caches the result of an idempotent operation.
+   */
+  private async cacheResult<T>(
+    idempotencyKey: string,
+    cacheKey: string,
+    value: T | Error,
+    valueSerializer: Serializer<T>,
+    errorSerializer: Serializer<Error>,
+  ): Promise<void> {
+    try {
+      if (value instanceof Error) {
+        await this.cache.set(cacheKey, {
+          type: 'error',
+          error: errorSerializer.serialize(value),
+        });
+      } else {
+        await this.cache.set(cacheKey, {
+          type: 'value',
+          value: valueSerializer.serialize(value),
+        });
+      }
+    } catch (error) {
+      // If caching the result fails, throw a critical error as it might lead to non-idempotent executions.
+      throw new IdempotentExecutorCriticalError(
+        'Failed to set cached result',
+        idempotencyKey,
+        error,
+      );
+    }
+  }
+
+  /**
+   * Throws an error that occurred during the execution of an idempotent operation,
+   * potentially transforming it using a callback.
+   */
+  private throwError(
+    idempotencyKey: string,
+    error: Error,
+    onActionError?: (idempotencyKey: string, error: Error) => Error,
+  ): never {
+    if (onActionError) {
+      try {
+        error = onActionError(idempotencyKey, error);
+      } catch (error) {
+        throw new IdempotentExecutorError(
+          'Failed to execute onActionError callback',
+          idempotencyKey,
+          error,
+        );
+      }
+    }
+
+    throw new ReplayedErrorWrapper(error);
+  }
+
+  /**
+   * Returns the result of an idempotent operation,
+   * potentially transforming it using a callback.
+   */
+  private returnResult<T>(
+    idempotencyKey: string,
+    value: T,
+    onActionSuccess?: (idempotencyKey: string, value: T) => T,
+  ): T {
+    if (onActionSuccess) {
+      try {
+        value = onActionSuccess(idempotencyKey, value);
+      } catch (error) {
+        throw new IdempotentExecutorError(
+          'Failed to execute onActionSuccess callback',
+          idempotencyKey,
+          error,
+        );
+      }
+    }
+
+    return value;
   }
 }
