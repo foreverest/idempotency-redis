@@ -1,4 +1,5 @@
 import { DefaultErrorSerializer, JSONSerializer } from './serialization';
+import { SerializerError } from './serialization.errors';
 
 describe('JSONSerializer', () => {
   const serializer = new JSONSerializer();
@@ -23,6 +24,29 @@ describe('JSONSerializer', () => {
     expect(serializer.deserialize('{"key":"value"}')).toEqual({
       key: 'value',
     });
+  });
+
+  it('should throw an error for invalid JSON', () => {
+    expect(() => serializer.deserialize('.')).toThrow(
+      new SerializerError(
+        'Invalid JSON',
+        new SyntaxError('Unexpected token . in JSON at position 0'),
+      ),
+    );
+  });
+
+  it('should throw an error for non-JSON serializable value', () => {
+    const value = { circular: {} };
+    value.circular = value;
+
+    expect(() => serializer.serialize(value)).toThrow(
+      new SerializerError(
+        'Not JSON serializable',
+        new TypeError(
+          "Converting circular structure to JSON\n    --> starting at object with constructor 'Object'\n    --- property 'circular' closes the circle",
+        ),
+      ),
+    );
   });
 });
 
@@ -66,7 +90,7 @@ describe('DefaultErrorSerializer', () => {
     const invalidSerializedError = '{ "some": "object" }';
 
     expect(() => serializer.deserialize(invalidSerializedError)).toThrow(
-      'Invalid serialized error format',
+      new SerializerError('Invalid serialized error format'),
     );
   });
 
@@ -74,7 +98,10 @@ describe('DefaultErrorSerializer', () => {
     const invalidSerializedError = '.';
 
     expect(() => serializer.deserialize(invalidSerializedError)).toThrow(
-      'Invalid JSON',
+      new SerializerError(
+        'Invalid JSON',
+        new SyntaxError('Unexpected token . in JSON at position 0'),
+      ),
     );
   });
 });

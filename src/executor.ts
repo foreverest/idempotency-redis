@@ -7,47 +7,15 @@ import {
   DefaultErrorSerializer,
 } from './serialization';
 import { CachedResult, RedisCache } from './cache';
-
-/**
- * Represents a generic error related to idempotent operations.
- */
-export class IdempotentExecutorError extends Error {
-  /**
-   * Constructs an instance of IdempotentExecutorError.
-   * @param message The error message describing what went wrong.
-   * @param idempotencyKey The unique key used to identify and enforce idempotency for an operation.
-   * @param cause (Optional) The underlying error or reason for this error, if any.
-   */
-  constructor(
-    message: string,
-    public readonly idempotencyKey: string,
-    public readonly cause?: unknown,
-  ) {
-    super(message);
-    this.name = 'IdempotentExecutorError';
-  }
-}
-
-/**
- * Represents a critical error related to idempotent operations, potentially leading to non-idempotent executions.
- */
-export class IdempotentExecutorCriticalError extends IdempotentExecutorError {
-  /**
-   * Constructs an instance of IdempotentExecutorCriticalError.
-   * This error class should be used for critical issues that might lead to non-idempotent executions.
-   * @param message The error message describing the critical issue.
-   * @param idempotencyKey The unique key used to identify and enforce idempotency for an operation.
-   * @param cause (Optional) The underlying error or reason for this critical error, if any.
-   */
-  constructor(message: string, idempotencyKey: string, cause?: unknown) {
-    super(
-      `Possibly non-idempotent execution: ${message}`,
-      idempotencyKey,
-      cause,
-    );
-    this.name = 'IdempotentExecutorCriticalError';
-  }
-}
+import {
+  IdempotentExecutorCacheError,
+  IdempotentExecutorCallbackError,
+  IdempotentExecutorCriticalError,
+  IdempotentExecutorErrorBase,
+  IdempotentExecutorNonErrorWrapperError,
+  IdempotentExecutorSerializationError,
+  IdempotentExecutorUnknownError,
+} from './executor.errors';
 
 /**
  * Wraps an error that is being replayed.
@@ -103,8 +71,13 @@ export class IdempotentExecutor {
    *    @property {(idempotencyKey: string, value: T) => T} options.onSuccessReplay - Optional. A callback that is invoked when a successful action is replayed. It receives the idempotency key and the result of the action, and should return the result to be returned by the executor.
    *    @property {(idempotencyKey: string, error: Error) => Error} options.onErrorReplay - Optional. A callback that is invoked when a failed action is replayed. It receives the idempotency key and the error that occurred, and should return the error to be thrown by the executor.
    * @returns {Promise<T>} The result of the executed action.
-   * @throws {IdempotentExecutorError} If acquiring the lock or retrieving the cached result fails.
    * @throws {IdempotentExecutorCriticalError} If saving the result to cache fails, potentially leading to non-idempotent executions.
+   * @throws {IdempotentExecutorCacheError} If retrieving the cached result fails.
+   * @throws {IdempotentExecutorSerializationError} If serializing or deserializing the cached result fails.
+   * @throws {IdempotentExecutorCallbackError} If executing a callback fails.
+   * @throws {IdempotentExecutorNonErrorWrapperError} If the action throws a non-error object.
+   * @throws {IdempotentExecutorUnknownError} If an unknown error occurs during the idempotent execution.
+   * @throws {Error} If the action throws an error.
    */
   async run<T>(
     idempotencyKey: string,
@@ -167,7 +140,11 @@ export class IdempotentExecutor {
             actionResult =
               error instanceof Error
                 ? error
-                : new Error(`Non-error thrown: ${error}`);
+                : new IdempotentExecutorNonErrorWrapperError(
+                    'Non-error thrown',
+                    idempotencyKey,
+                    error,
+                  );
           }
 
           // Cache the result of the action.
@@ -197,16 +174,13 @@ export class IdempotentExecutor {
         },
       );
     } catch (error) {
+      if (error instanceof IdempotentExecutorErrorBase) {
+        throw error;
+      }
       if (error instanceof ReplayedErrorWrapper) {
         throw error.origin;
       }
-      if (
-        error instanceof IdempotentExecutorError ||
-        error instanceof IdempotentExecutorCriticalError
-      ) {
-        throw error;
-      }
-      throw new IdempotentExecutorError(
+      throw new IdempotentExecutorUnknownError(
         'Failed to execute action idempotently',
         idempotencyKey,
         error,
@@ -224,7 +198,7 @@ export class IdempotentExecutor {
     try {
       return await this.cache.get(cacheKey);
     } catch (error) {
-      throw new IdempotentExecutorError(
+      throw new IdempotentExecutorCacheError(
         'Failed to get cached result',
         idempotencyKey,
         error,
@@ -245,7 +219,7 @@ export class IdempotentExecutor {
     try {
       error = errorSerializer.deserialize(serializedError);
     } catch (error) {
-      throw new IdempotentExecutorError(
+      throw new IdempotentExecutorSerializationError(
         'Failed to parse cached error',
         idempotencyKey,
         error,
@@ -256,9 +230,10 @@ export class IdempotentExecutor {
       try {
         error = onErrorReplay(idempotencyKey, error);
       } catch (error) {
-        throw new IdempotentExecutorError(
+        throw new IdempotentExecutorCallbackError(
           'Failed to execute onErrorReplay callback',
           idempotencyKey,
+          'onErrorReplay',
           error,
         );
       }
@@ -280,7 +255,7 @@ export class IdempotentExecutor {
     try {
       value = valueSerializer.deserialize(serializedValue);
     } catch (error) {
-      throw new IdempotentExecutorError(
+      throw new IdempotentExecutorSerializationError(
         'Failed to parse cached value',
         idempotencyKey,
         error,
@@ -291,9 +266,10 @@ export class IdempotentExecutor {
       try {
         value = onSuccessReplay(idempotencyKey, value);
       } catch (error) {
-        throw new IdempotentExecutorError(
+        throw new IdempotentExecutorCallbackError(
           'Failed to execute onSuccessReplay callback',
           idempotencyKey,
+          'onSuccessReplay',
           error,
         );
       }
@@ -347,9 +323,10 @@ export class IdempotentExecutor {
       try {
         error = onActionError(idempotencyKey, error);
       } catch (error) {
-        throw new IdempotentExecutorError(
+        throw new IdempotentExecutorCallbackError(
           'Failed to execute onActionError callback',
           idempotencyKey,
+          'onActionError',
           error,
         );
       }
@@ -371,9 +348,10 @@ export class IdempotentExecutor {
       try {
         value = onActionSuccess(idempotencyKey, value);
       } catch (error) {
-        throw new IdempotentExecutorError(
+        throw new IdempotentExecutorCallbackError(
           'Failed to execute onActionSuccess callback',
           idempotencyKey,
+          'onActionSuccess',
           error,
         );
       }

@@ -1,10 +1,16 @@
+export { IdempotentExecutor } from './executor';
 export {
-  IdempotentExecutor,
-  IdempotentExecutorError,
+  IdempotentExecutorErrorBase,
+  IdempotentExecutorCacheError,
+  IdempotentExecutorCallbackError,
   IdempotentExecutorCriticalError,
-} from './executor';
+  IdempotentExecutorSerializationError,
+  IdempotentExecutorUnknownError,
+  IdempotentExecutorNonErrorWrapperError,
+} from './executor.errors';
 export {
   Serializer,
   JSONSerializer,
   DefaultErrorSerializer,
 } from './serialization';
+export { SerializerError } from './serialization.errors';

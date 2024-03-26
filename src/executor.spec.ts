@@ -1,11 +1,17 @@
 import Client from 'ioredis-mock';
 
-import {
-  IdempotentExecutor,
-  IdempotentExecutorCriticalError,
-  IdempotentExecutorError,
-} from './executor';
+import { IdempotentExecutor } from './executor';
 import { DefaultErrorSerializer, JSONSerializer } from './serialization';
+import {
+  IdempotentExecutorCacheError,
+  IdempotentExecutorCallbackError,
+  IdempotentExecutorCriticalError,
+  IdempotentExecutorNonErrorWrapperError,
+  IdempotentExecutorSerializationError,
+  IdempotentExecutorUnknownError,
+} from './executor.errors';
+import { RedisCacheError } from './cache.errors';
+import { SerializerError } from './serialization.errors';
 
 describe('IdempotentExecutor', () => {
   let redisClient = new Client();
@@ -83,29 +89,44 @@ describe('IdempotentExecutor', () => {
     expect(action).toHaveBeenCalledTimes(1);
   });
 
-  it('should throw IdempotentExecutorError if getting cached result fails', async () => {
+  it('should throw IdempotentExecutorCacheError if getting cached result fails', async () => {
     const action = jest.fn().mockResolvedValue('action result');
     jest
       .spyOn(redisClient, 'hgetall')
       .mockImplementation(() => Promise.reject(new Error('Redis error')));
 
     await expect(executor.run('key', action)).rejects.toThrow(
-      IdempotentExecutorError,
+      new IdempotentExecutorCacheError(
+        'Failed to get cached result',
+        'key',
+        new RedisCacheError(
+          'Failed to get cached result',
+          'key',
+          new Error('Redis error'),
+        ),
+      ),
     );
   });
 
-  it('should throw IdempotentExecutorError if deserializing cached result fails', async () => {
+  it('should throw IdempotentExecutorSerializationError if deserializing cached result fails', async () => {
     const action = jest.fn().mockResolvedValue('action result');
     jest
       .spyOn(redisClient, 'hgetall')
       .mockImplementation(() => Promise.resolve({ type: 'value', value: '.' })); // Invalid JSON.
 
     await expect(executor.run('key', action)).rejects.toThrow(
-      IdempotentExecutorError,
+      new IdempotentExecutorSerializationError(
+        'Failed to parse cached value',
+        'key',
+        new SerializerError(
+          'Invalid JSON',
+          new SyntaxError('Unexpected token . in JSON at position 0'),
+        ),
+      ),
     );
   });
 
-  it('should throw IdempotentExecutorError if onSuccessReplay fails', async () => {
+  it('should throw IdempotentExecutorCallbackError if onSuccessReplay fails', async () => {
     const action = jest.fn();
     const onSuccessReplay = jest.fn().mockImplementation(() => {
       throw new Error('onSuccessReplay error');
@@ -116,7 +137,14 @@ describe('IdempotentExecutor', () => {
 
     await expect(
       executor.run('key', action, { onSuccessReplay }),
-    ).rejects.toThrow(IdempotentExecutorError);
+    ).rejects.toThrow(
+      new IdempotentExecutorCallbackError(
+        'Failed to execute onSuccessReplay callback',
+        'key',
+        'onSuccessReplay',
+        new Error('onSuccessReplay error'),
+      ),
+    );
 
     expect(action).toHaveBeenCalledTimes(0);
     expect(onSuccessReplay).toHaveBeenCalledWith('key', 'action result');
@@ -138,7 +166,7 @@ describe('IdempotentExecutor', () => {
     expect(onSuccessReplay).toHaveBeenCalledWith('key', 'action result');
   });
 
-  it('should throw IdempotentExecutorError if onErrorReplay fails', async () => {
+  it('should throw IdempotentExecutorCallbackError if onErrorReplay fails', async () => {
     const action = jest.fn();
     const onErrorReplay = jest.fn().mockImplementation(() => {
       throw new Error('onErrorReplay error');
@@ -154,7 +182,14 @@ describe('IdempotentExecutor', () => {
 
     await expect(
       executor.run('key', action, { onErrorReplay }),
-    ).rejects.toThrow(IdempotentExecutorError);
+    ).rejects.toThrow(
+      new IdempotentExecutorCallbackError(
+        'Failed to execute onErrorReplay callback',
+        'key',
+        'onErrorReplay',
+        new Error('onErrorReplay error'),
+      ),
+    );
 
     expect(action).toHaveBeenCalledTimes(0);
     expect(onErrorReplay).toHaveBeenCalledWith(
@@ -179,7 +214,7 @@ describe('IdempotentExecutor', () => {
 
     await expect(
       executor.run('key', action, { onErrorReplay }),
-    ).rejects.toThrow('onErrorReplay error');
+    ).rejects.toThrow(new Error('onErrorReplay error'));
 
     expect(action).toHaveBeenCalledTimes(0);
     expect(onErrorReplay).toHaveBeenCalledWith(
@@ -188,14 +223,21 @@ describe('IdempotentExecutor', () => {
     );
   });
 
-  it('should throw IdempotentExecutorError if deserializing cached error fails', async () => {
+  it('should throw IdempotentExecutorSerializationError if deserializing cached error fails', async () => {
     const action = jest.fn().mockResolvedValue('action result');
     jest
       .spyOn(redisClient, 'hgetall')
       .mockImplementation(() => Promise.resolve({ type: 'error', error: '.' })); // Invalid JSON.
 
     await expect(executor.run('key', action)).rejects.toThrow(
-      IdempotentExecutorError,
+      new IdempotentExecutorSerializationError(
+        'Failed to parse cached error',
+        'key',
+        new SerializerError(
+          'Invalid JSON',
+          new SyntaxError('Unexpected token . in JSON at position 0'),
+        ),
+      ),
     );
   });
 
@@ -206,11 +248,19 @@ describe('IdempotentExecutor', () => {
       .mockImplementation(() => Promise.reject(new Error('Redis error')));
 
     await expect(executor.run('key1', action)).rejects.toThrow(
-      IdempotentExecutorCriticalError,
+      new IdempotentExecutorCriticalError(
+        'Failed to set cached result',
+        'key1',
+        new RedisCacheError(
+          'Failed to set cached result',
+          'key1',
+          new Error('Redis error'),
+        ),
+      ),
     );
   });
 
-  it('should throw IdempotentExecutorError if onActionSuccess fails', async () => {
+  it('should throw IdempotentExecutorCallbackError if onActionSuccess fails', async () => {
     const action = jest.fn().mockResolvedValue('action result');
     const onActionSuccess = jest.fn().mockImplementation(() => {
       throw new Error('onActionSuccess error');
@@ -218,7 +268,14 @@ describe('IdempotentExecutor', () => {
 
     await expect(
       executor.run('key', action, { onActionSuccess }),
-    ).rejects.toThrow(IdempotentExecutorError);
+    ).rejects.toThrow(
+      new IdempotentExecutorCallbackError(
+        'Failed to execute onActionSuccess callback',
+        'key',
+        'onActionSuccess',
+        new Error('onActionSuccess error'),
+      ),
+    );
 
     expect(action).toHaveBeenCalledTimes(1);
     expect(onActionSuccess).toHaveBeenCalledWith('key', 'action result');
@@ -237,7 +294,7 @@ describe('IdempotentExecutor', () => {
     expect(onActionSuccess).toHaveBeenCalledWith('key', 'action result');
   });
 
-  it('should throw IdempotentExecutorError if onActionError fails', async () => {
+  it('should throw IdempotentExecutorCallbackError if onActionError fails', async () => {
     const action = jest.fn().mockRejectedValue(new Error('action error'));
     const onActionError = jest.fn().mockImplementation(() => {
       throw new Error('onActionError error');
@@ -245,7 +302,14 @@ describe('IdempotentExecutor', () => {
 
     await expect(
       executor.run('key', action, { onActionError }),
-    ).rejects.toThrow(IdempotentExecutorError);
+    ).rejects.toThrow(
+      new IdempotentExecutorCallbackError(
+        'Failed to execute onActionError callback',
+        'key',
+        'onActionError',
+        new Error('onActionError error'),
+      ),
+    );
 
     expect(action).toHaveBeenCalledTimes(1);
     expect(onActionError).toHaveBeenCalledWith(
@@ -262,7 +326,7 @@ describe('IdempotentExecutor', () => {
 
     await expect(
       executor.run('key', action, { onActionError }),
-    ).rejects.toThrow('onActionError error');
+    ).rejects.toThrow(new Error('onActionError error'));
 
     expect(action).toHaveBeenCalledTimes(1);
     expect(onActionError).toHaveBeenCalledWith(
@@ -286,10 +350,18 @@ describe('IdempotentExecutor', () => {
     const action = jest.fn().mockRejectedValue(error);
 
     await expect(executor.run('key1', action)).rejects.toThrow(
-      new Error('Non-error thrown: 42'),
+      new IdempotentExecutorNonErrorWrapperError(
+        'Non-error thrown',
+        'key1',
+        error,
+      ),
     );
     await expect(executor.run('key1', action)).rejects.toThrow(
-      new Error('Non-error thrown: 42'),
+      new IdempotentExecutorNonErrorWrapperError(
+        'Non-error thrown',
+        'key1',
+        error,
+      ),
     );
 
     expect(action).toHaveBeenCalledTimes(1);
@@ -360,7 +432,7 @@ describe('IdempotentExecutor', () => {
 
     expect(results[1].status).toBe('rejected');
     expect((results[1] as PromiseRejectedResult).reason).toEqual(
-      new IdempotentExecutorError(
+      new IdempotentExecutorUnknownError(
         'Failed to execute action idempotently',
         'key1',
       ),
@@ -426,9 +498,11 @@ describe('IdempotentExecutor', () => {
       executor.run('key1', action, {
         errorSerializer: new CustomErrorSerializer(),
       }),
-    ).rejects.toThrow('Action Failed');
+    ).rejects.toThrow(error);
     // The second call reveals how the error is actually stored in cache.
-    await expect(executor.run('key1', action)).rejects.toThrow('ACTION FAILED');
+    await expect(executor.run('key1', action)).rejects.toThrow(
+      new Error('ACTION FAILED'),
+    );
 
     expect(action).toHaveBeenCalledTimes(1);
   });
@@ -445,13 +519,13 @@ describe('IdempotentExecutor', () => {
     const action = jest.fn().mockRejectedValue(error);
 
     // The first call doesn't go through serialization.
-    await expect(executor.run('key1', action)).rejects.toThrow('Action Failed');
+    await expect(executor.run('key1', action)).rejects.toThrow(error);
     // The second call reveals the result of deserialization.
     await expect(
       executor.run('key1', action, {
         errorSerializer: new CustomErrorSerializer(),
       }),
-    ).rejects.toThrow('action failed');
+    ).rejects.toThrow(new Error('action failed'));
 
     expect(action).toHaveBeenCalledTimes(1);
   });
@@ -504,10 +578,10 @@ describe('IdempotentExecutor', () => {
 
     await expect(
       executor.run('key1', action, { errorSerializer }),
-    ).rejects.toThrow(CustomError);
+    ).rejects.toThrow(error);
     await expect(
       executor.run('key1', action, { errorSerializer }),
-    ).rejects.toThrow(CustomError);
+    ).rejects.toThrow(error);
 
     expect(action).toHaveBeenCalledTimes(1);
   });

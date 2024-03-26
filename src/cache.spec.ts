@@ -1,5 +1,6 @@
-import { CachedResult, RedisCache, RedisCacheError } from './cache';
+import { CachedResult, RedisCache } from './cache';
 import Client from 'ioredis-mock';
+import { RedisCacheError } from './cache.errors';
 
 describe('RedisCache', () => {
   let redisClient = new Client();
@@ -58,7 +59,9 @@ describe('RedisCache', () => {
       const mockError = new Error('Redis error');
       redisClient.hgetall = jest.fn().mockRejectedValue(mockError);
 
-      await expect(cache.get(mockKey)).rejects.toThrow(RedisCacheError);
+      await expect(cache.get(mockKey)).rejects.toThrow(
+        new RedisCacheError('Failed to get cached result', mockKey, mockError),
+      );
     });
   });
 
@@ -86,7 +89,7 @@ describe('RedisCache', () => {
       redisClient.hset = jest.fn().mockRejectedValue(mockError);
 
       await expect(cache.set(mockKey, mockValue)).rejects.toThrow(
-        RedisCacheError,
+        new RedisCacheError('Failed to set cached result', mockKey, mockError),
       );
     });
   });

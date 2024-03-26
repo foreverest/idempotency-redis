@@ -3,6 +3,7 @@ import {
   SerializedError,
   serializeError,
 } from 'serialize-error-cjs';
+import { SerializerError } from './serialization.errors';
 
 /**
  * Interface defining a generic serializer.
@@ -10,24 +11,6 @@ import {
 export interface Serializer<T> {
   serialize(value: T): string;
   deserialize(value: string): T;
-}
-
-/**
- * Custom error class for handling serialization-related errors.
- */
-export class SerializerError extends Error {
-  /**
-   * Constructs an instance of SerializerError.
-   * @param message The error message.
-   * @param cause (Optional) The underlying error or reason for this error, if any.
-   */
-  constructor(
-    message: string,
-    public readonly cause?: unknown,
-  ) {
-    super(message);
-    this.name = 'SerializerError';
-  }
 }
 
 /**
@@ -50,6 +33,7 @@ export class DefaultErrorSerializer implements Serializer<Error> {
    * Throws if the format is not recognized as a serialized Error object.
    * @param value The string to deserialize.
    * @returns The deserialized Error object.
+   * @throws SerializerError if the format is not recognized.
    */
   deserialize(value: string): Error {
     let error: unknown;
@@ -75,20 +59,30 @@ export class JSONSerializer<T> implements Serializer<T> {
    * Serializes a value into a string using JSON.stringify.
    * @param value The value to serialize.
    * @returns A string representation of the value.
+   * @throws SerializerError if the value is not JSON serializable.
    */
   serialize(value: T): string {
-    // Assumes the value is already in a JSON serializable format.
-    return JSON.stringify(value);
+    try {
+      // Assumes the value is already in a JSON serializable format.
+      return JSON.stringify(value);
+    } catch (err) {
+      throw new SerializerError('Not JSON serializable', err);
+    }
   }
 
   /**
    * Deserializes a string back into a value using JSON.parse.
    * @param value The string to deserialize.
    * @returns The deserialized value.
+   * @throws SerializerError if the value is not valid JSON.
    */
   deserialize(value: string): T {
-    // Assumes the value is a serialized JSON string in the shape of T.
-    return JSON.parse(value);
+    try {
+      // Assumes the value is a serialized JSON string in the shape of T.
+      return JSON.parse(value);
+    } catch (err) {
+      throw new SerializerError('Invalid JSON', err);
+    }
   }
 }
 
