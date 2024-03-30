@@ -1,4 +1,9 @@
-# idempotency-redis &middot; [![CI](https://github.com/foreverest/idempotency-redis/actions/workflows/ci.yml/badge.svg)](https://github.com/foreverest/idempotency-redis/actions/workflows/ci.yml) [![npm version](https://img.shields.io/npm/v/idempotency-redis.svg?style=flat-square)](https://www.npmjs.com/package/idempotency-redis) [![npm](https://img.shields.io/npm/dm/idempotency-redis.svg?style=flat-square)](https://npm-stat.com/charts.html?package=idempotency-redis)
+# idempotency-redis
+
+[![CI](https://github.com/foreverest/idempotency-redis/actions/workflows/ci.yml/badge.svg)](https://github.com/foreverest/idempotency-redis/actions/workflows/ci.yml)
+[![codecov](https://codecov.io/gh/foreverest/idempotency-redis/graph/badge.svg?token=6G4SOMC2WK)](https://codecov.io/gh/foreverest/idempotency-redis)
+[![npm version](https://img.shields.io/npm/v/idempotency-redis.svg?style=flat-square)](https://www.npmjs.com/package/idempotency-redis)
+[![npm](https://img.shields.io/npm/dm/idempotency-redis.svg?style=flat-square)](https://npm-stat.com/charts.html?package=idempotency-redis)
 
 `idempotency-redis` is a Node.js package designed to ensure idempotent operations in distributed systems, with Redis at its core for state management and distributed locks. It provides a straightforward way to execute operations exactly once and replay results of previously completed operations. This package is particularly useful for applications that require idempotency guarantees, such as financial transactions, API request processing, and more.
 
