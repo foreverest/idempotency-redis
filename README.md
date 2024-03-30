@@ -7,6 +7,17 @@
 
 `idempotency-redis` is a Node.js package designed to ensure idempotent operations in distributed systems, with Redis at its core for state management and distributed locks. It provides a straightforward way to execute operations exactly once and replay results of previously completed operations. This package is particularly useful for applications that require idempotency guarantees, such as financial transactions, API request processing, and more.
 
+## Table of Contents
+
+- [Installation](#installation)
+- [Usage](#usage)
+  - [Basic Usage](#basic-usage)
+  - [The `run` Method](#the-run-method)
+  - [Serialization](#serialization)
+  - [Custom Callbacks for Enhanced Control](#custom-callbacks-for-enhanced-control)
+- [Contributing](#contributing)
+- [License](#license)
+
 ## Installation
 
 Install `idempotency-redis` using npm:
