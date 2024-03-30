@@ -27,12 +27,17 @@ describe('JSONSerializer', () => {
   });
 
   it('should throw an error for invalid JSON', () => {
-    expect(() => serializer.deserialize('.')).toThrow(
-      new SerializerError(
-        'Invalid JSON',
-        new SyntaxError('Unexpected token . in JSON at position 0'),
-      ),
-    );
+    try {
+      serializer.deserialize('.');
+      fail('serializer.deserialize did not throw');
+    } catch (error) {
+      if (error instanceof SerializerError) {
+        expect(error.message).toBe('Invalid JSON');
+        expect(error.cause).toBeInstanceOf(SyntaxError);
+      } else {
+        fail('Thrown error is not an instance of SerializerError');
+      }
+    }
   });
 
   it('should throw an error for non-JSON serializable value', () => {
@@ -95,13 +100,16 @@ describe('DefaultErrorSerializer', () => {
   });
 
   it('should throw an error for invalid JSON', () => {
-    const invalidSerializedError = '.';
-
-    expect(() => serializer.deserialize(invalidSerializedError)).toThrow(
-      new SerializerError(
-        'Invalid JSON',
-        new SyntaxError('Unexpected token . in JSON at position 0'),
-      ),
-    );
+    try {
+      serializer.deserialize('.');
+      fail('serializer.deserialize did not throw');
+    } catch (error) {
+      if (error instanceof SerializerError) {
+        expect(error.message).toBe('Invalid JSON');
+        expect(error.cause).toBeInstanceOf(SyntaxError);
+      } else {
+        fail('Thrown error is not an instance of SerializerError');
+      }
+    }
   });
 });
