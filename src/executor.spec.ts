@@ -314,16 +314,25 @@ describe('IdempotentExecutor.run method', () => {
           Promise.resolve({ type: 'value', value: '.' }),
         ); // Invalid JSON.
 
-      await expect(executor.run('key', action)).rejects.toThrow(
-        new IdempotentExecutorSerializationError(
-          'Failed to parse cached value',
-          'key',
-          new SerializerError(
-            'Invalid JSON',
-            new SyntaxError('Unexpected token . in JSON at position 0'),
-          ),
-        ),
-      );
+      try {
+        await executor.run('key', action);
+        fail('executor.run did not throw');
+      } catch (error) {
+        if (error instanceof IdempotentExecutorSerializationError) {
+          expect(error.message).toBe('Failed to parse cached value');
+          expect(error.idempotencyKey).toBe('key');
+          if (error.cause instanceof SerializerError) {
+            expect(error.cause.message).toBe('Invalid JSON');
+            expect(error.cause.cause).toBeInstanceOf(SyntaxError);
+          } else {
+            fail('cause is not an instance of SerializerError');
+          }
+        } else {
+          fail(
+            'Thrown error is not an instance of IdempotentExecutorSerializationError',
+          );
+        }
+      }
     });
 
     it('should throw IdempotentExecutorSerializationError if deserializing cached error fails', async () => {
@@ -334,16 +343,25 @@ describe('IdempotentExecutor.run method', () => {
           Promise.resolve({ type: 'error', error: '.' }),
         ); // Invalid JSON.
 
-      await expect(executor.run('key', action)).rejects.toThrow(
-        new IdempotentExecutorSerializationError(
-          'Failed to parse cached error',
-          'key',
-          new SerializerError(
-            'Invalid JSON',
-            new SyntaxError('Unexpected token . in JSON at position 0'),
-          ),
-        ),
-      );
+      try {
+        await executor.run('key', action);
+        fail('executor.run did not throw');
+      } catch (error) {
+        if (error instanceof IdempotentExecutorSerializationError) {
+          expect(error.message).toBe('Failed to parse cached error');
+          expect(error.idempotencyKey).toBe('key');
+          if (error.cause instanceof SerializerError) {
+            expect(error.cause.message).toBe('Invalid JSON');
+            expect(error.cause.cause).toBeInstanceOf(SyntaxError);
+          } else {
+            fail('cause is not an instance of SerializerError');
+          }
+        } else {
+          fail(
+            'Thrown error is not an instance of IdempotentExecutorSerializationError',
+          );
+        }
+      }
     });
   });
 
