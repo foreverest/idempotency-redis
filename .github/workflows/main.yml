@@ -7,12 +7,12 @@ on:
     branches: ['main']
 
 jobs:
-  build:
+  node:
     runs-on: ubuntu-latest
 
     strategy:
       matrix:
-        node-version: [16.x, 18.x, 20.x, 21.x]
+        node-version: [17.x, 18.x, 19.x, 20.x, 21.x]
         # See supported Node.js release schedule at https://nodejs.org/en/about/releases/
 
     steps:
