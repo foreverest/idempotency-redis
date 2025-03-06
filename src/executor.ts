@@ -34,6 +34,7 @@ interface RunOptions<T> {
   timeout: number;
   valueSerializer: Serializer<T>;
   errorSerializer: Serializer<Error>;
+  ignoreErrors?: boolean;
   onActionSuccess: (idempotencyKey: string, value: T) => T;
   onActionError: (idempotencyKey: string, error: Error) => Error;
   onSuccessReplay: (idempotencyKey: string, value: T) => T;
@@ -89,7 +90,7 @@ export class IdempotentExecutor {
     const errorSerializer =
       options?.errorSerializer ?? new DefaultErrorSerializer();
     const cacheKey = `idempotent-executor-result:${idempotencyKey}`;
-
+    const ignoreErrors = options?.ignoreErrors ?? false;
     try {
       return await this.redlock.using<T>(
         [idempotencyKey],
@@ -109,13 +110,15 @@ export class IdempotentExecutor {
           // If the action has already been executed, replay the result.
           if (cachedResult) {
             if (cachedResult.type === 'error') {
-              this.replayCachedError(
-                idempotencyKey,
-                errorSerializer,
-                cachedResult.error,
-                options?.onErrorReplay,
-              );
-            }
+              if (!ignoreErrors) {
+                this.replayCachedError(
+                  idempotencyKey,
+                  errorSerializer,
+                  cachedResult.error,
+                  options?.onErrorReplay,
+                );
+              }
+            } else {
 
             if (cachedResult.value === undefined) {
               // If `undefined` does not satisfy the type T,
@@ -129,7 +132,8 @@ export class IdempotentExecutor {
               valueSerializer,
               cachedResult.value,
               options?.onSuccessReplay,
-            );
+              );
+            }
           }
 
           // Execute the action.
