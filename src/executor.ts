@@ -90,7 +90,7 @@ export class IdempotentExecutor {
     const errorSerializer =
       options?.errorSerializer ?? new DefaultErrorSerializer();
     const cacheKey = `idempotent-executor-result:${idempotencyKey}`;
-    const ignoreErrors = options?.ignoreErrors ?? false;
+    const shouldIgnoreError = options?.shouldIgnoreError ?? (() => false);
     try {
       return await this.redlock.using<T>(
         [idempotencyKey],
@@ -110,15 +110,13 @@ export class IdempotentExecutor {
           // If the action has already been executed, replay the result.
           if (cachedResult) {
             if (cachedResult.type === 'error') {
-              if (!ignoreErrors) {
-                this.replayCachedError(
-                  idempotencyKey,
-                  errorSerializer,
-                  cachedResult.error,
-                  options?.onErrorReplay,
-                );
-              }
-            } else {
+              this.replayCachedError(
+                idempotencyKey,
+                errorSerializer,
+                cachedResult.error,
+                options?.onErrorReplay,
+              );
+            }
 
             if (cachedResult.value === undefined) {
               // If `undefined` does not satisfy the type T,
@@ -127,13 +125,12 @@ export class IdempotentExecutor {
               return undefined as T;
             }
 
-            return this.replayCachedValue(
-              idempotencyKey,
-              valueSerializer,
-              cachedResult.value,
-              options?.onSuccessReplay,
-              );
-            }
+          return this.replayCachedValue(
+            idempotencyKey,
+            valueSerializer,
+            cachedResult.value,
+            options?.onSuccessReplay,
+            );
           }
 
           // Execute the action.
@@ -158,6 +155,7 @@ export class IdempotentExecutor {
             actionResult,
             valueSerializer,
             errorSerializer,
+            shouldIgnoreError,
           );
 
           // If the action resulted in an error, throw it.
@@ -291,9 +289,16 @@ export class IdempotentExecutor {
     value: T | Error,
     valueSerializer: Serializer<T>,
     errorSerializer: Serializer<Error>,
+    shouldIgnoreError: (error: Error) => boolean,
   ): Promise<void> {
     try {
       if (value instanceof Error) {
+        const ignoreError = shouldIgnoreError(value);
+
+        if (ignoreError) {
+          return;
+        }
+
         await this.cache.set(cacheKey, {
           type: 'error',
           error: errorSerializer.serialize(value),
