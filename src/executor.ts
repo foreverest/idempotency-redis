@@ -34,7 +34,7 @@ interface RunOptions<T> {
   timeout: number;
   valueSerializer: Serializer<T>;
   errorSerializer: Serializer<Error>;
-  ignoreErrors?: boolean;
+  shouldIgnoreError?: (error: Error) => boolean;
   onActionSuccess: (idempotencyKey: string, value: T) => T;
   onActionError: (idempotencyKey: string, error: Error) => Error;
   onSuccessReplay: (idempotencyKey: string, value: T) => T;
