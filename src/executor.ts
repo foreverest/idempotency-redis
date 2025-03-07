@@ -125,11 +125,11 @@ export class IdempotentExecutor {
               return undefined as T;
             }
 
-          return this.replayCachedValue(
-            idempotencyKey,
-            valueSerializer,
-            cachedResult.value,
-            options?.onSuccessReplay,
+            return this.replayCachedValue(
+              idempotencyKey,
+              valueSerializer,
+              cachedResult.value,
+              options?.onSuccessReplay,
             );
           }
 
