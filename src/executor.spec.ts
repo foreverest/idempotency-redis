@@ -69,6 +69,20 @@ describe('IdempotentExecutor.run method', () => {
       expect(action).toHaveBeenCalledTimes(1);
     });
 
+    it('should handle action execution failure by caching but not replaying the error if ignoreError is true', async () => {
+      const error = new Error('action failed');
+      const action = jest.fn().mockRejectedValue(error);
+
+      await expect(
+        executor.run('key1', action, { shouldIgnoreError: () => true }),
+      ).rejects.toThrow(error);
+      await expect(
+        executor.run('key1', action, { shouldIgnoreError: () => true }),
+      ).rejects.toThrow(error);
+
+      expect(action).toHaveBeenCalledTimes(2);
+    });
+
     it('should replay undefined value', async () => {
       const action = jest.fn().mockResolvedValue(undefined);
 
