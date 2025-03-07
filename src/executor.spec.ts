@@ -73,8 +73,12 @@ describe('IdempotentExecutor.run method', () => {
       const error = new Error('action failed');
       const action = jest.fn().mockRejectedValue(error);
 
-      await expect(executor.run('key1', action, { shouldIgnoreError: () => true })).rejects.toThrow(error);
-      await expect(executor.run('key1', action, { shouldIgnoreError: () => true })).rejects.toThrow(error);
+      await expect(
+        executor.run('key1', action, { shouldIgnoreError: () => true }),
+      ).rejects.toThrow(error);
+      await expect(
+        executor.run('key1', action, { shouldIgnoreError: () => true }),
+      ).rejects.toThrow(error);
 
       expect(action).toHaveBeenCalledTimes(2);
     });
