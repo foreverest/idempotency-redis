@@ -108,6 +108,7 @@ The `run` method is a core function of the `IdempotentExecutor`, responsible for
   - `onActionError`: A callback invoked when the action fails during execution.
   - `onSuccessReplay`: A callback invoked when a successful action is replayed.
   - `onErrorReplay`: A callback invoked when a failed action is replayed.
+  - `shouldIgnoreError`: A callback invoked when an error is encountered. If it returns `true`, the error will not be cached and will not be replayed.
 
 ### Serialization
 

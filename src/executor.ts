@@ -71,6 +71,7 @@ export class IdempotentExecutor {
    *    @property {(idempotencyKey: string, error: Error) => Error} options.onActionError - Optional. A callback that is invoked when the action fails during execution. It receives the idempotency key and the error that occurred, and should return the error to be thrown by the executor.
    *    @property {(idempotencyKey: string, value: T) => T} options.onSuccessReplay - Optional. A callback that is invoked when a successful action is replayed. It receives the idempotency key and the result of the action, and should return the result to be returned by the executor.
    *    @property {(idempotencyKey: string, error: Error) => Error} options.onErrorReplay - Optional. A callback that is invoked when a failed action is replayed. It receives the idempotency key and the error that occurred, and should return the error to be thrown by the executor.
+   *    @property {(error: Error) => boolean} options.shouldIgnoreError - Optional. A callback that is invoked when an error is encountered. If it returns `true`, the error will not be cached and will not be replayed.
    * @returns {Promise<T>} The result of the executed action.
    * @throws {IdempotentExecutorCriticalError} If saving the result to cache fails, potentially leading to non-idempotent executions.
    * @throws {IdempotentExecutorCacheError} If retrieving the cached result fails.
