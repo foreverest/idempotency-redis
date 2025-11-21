@@ -45,7 +45,7 @@ interface RunOptions<T> {
  * Configuration options for the {@link IdempotentExecutor}.
  */
 interface IdempotentExecutorOptions {
-  /** This will be suffixed to all idempotency keys. */
+  /** This will be inserted after the prefix and before the idempotency key. */
   namespace?: string;
 }
 
@@ -102,7 +102,7 @@ export class IdempotentExecutor {
       options?.errorSerializer ?? new DefaultErrorSerializer();
     let cacheKey = `idempotent-executor-result:${idempotencyKey}`;
     if (this.options.namespace) {
-      cacheKey = `${cacheKey}:${this.options.namespace}`;
+      cacheKey = `idempotent-executor-result:${this.options.namespace}:${idempotencyKey}`;
     }
     const shouldIgnoreError = options?.shouldIgnoreError ?? (() => false);
     try {

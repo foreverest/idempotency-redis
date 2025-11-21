@@ -695,7 +695,7 @@ describe('IdempotentExecutor.run method', () => {
 
       // Verify the cache key includes the namespace
       const cacheKey = await redisClient.hgetall(
-        'idempotent-executor-result:key1:test-namespace',
+        'idempotent-executor-result:test-namespace:key1',
       );
       expect(cacheKey.type).toBe('value');
       expect(cacheKey.value).toBe('"action result"');
@@ -721,10 +721,10 @@ describe('IdempotentExecutor.run method', () => {
 
       // Verify both cache entries exist
       const cacheKey1 = await redisClient.hgetall(
-        'idempotent-executor-result:same-key:namespace1',
+        'idempotent-executor-result:namespace1:same-key',
       );
       const cacheKey2 = await redisClient.hgetall(
-        'idempotent-executor-result:same-key:namespace2',
+        'idempotent-executor-result:namespace2:same-key',
       );
       expect(cacheKey1.type).toBe('value');
       expect(cacheKey1.value).toBe('"result1"');
@@ -772,7 +772,7 @@ describe('IdempotentExecutor.run method', () => {
         'idempotent-executor-result:same-key',
       );
       const cacheKeyWithNamespace = await redisClient.hgetall(
-        'idempotent-executor-result:same-key:test-namespace',
+        'idempotent-executor-result:test-namespace:same-key',
       );
       expect(cacheKeyWithoutNamespace.type).toBe('value');
       expect(cacheKeyWithoutNamespace.value).toBe('"result1"');
@@ -798,7 +798,7 @@ describe('IdempotentExecutor.run method', () => {
 
       // Verify the error cache key includes the namespace
       const cacheKey = await redisClient.hgetall(
-        'idempotent-executor-result:key1:error-namespace',
+        'idempotent-executor-result:error-namespace:key1',
       );
       expect(cacheKey.type).toBe('error');
       expect(cacheKey.error).toBeDefined();
@@ -824,10 +824,10 @@ describe('IdempotentExecutor.run method', () => {
 
       // Verify both error cache entries exist separately
       const cacheKey1 = await redisClient.hgetall(
-        'idempotent-executor-result:same-key:namespace1',
+        'idempotent-executor-result:namespace1:same-key',
       );
       const cacheKey2 = await redisClient.hgetall(
-        'idempotent-executor-result:same-key:namespace2',
+        'idempotent-executor-result:namespace2:same-key',
       );
       expect(cacheKey1.type).toBe('error');
       expect(cacheKey2.type).toBe('error');
