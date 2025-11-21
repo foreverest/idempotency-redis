@@ -61,6 +61,7 @@ export class IdempotentExecutor {
    * Initializes a new instance of the IdempotentExecutor class.
    *
    * @param {Client} redis - The Redis client to be used for managing state and locks.
+   * @param {IdempotentExecutorOptions} options - Optional. Configuration options for the executor.
    */
   constructor(redis: Client, options: IdempotentExecutorOptions = {}) {
     this.redlock = new Redlock([redis]);
