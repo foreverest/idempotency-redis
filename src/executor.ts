@@ -42,20 +42,31 @@ interface RunOptions<T> {
 }
 
 /**
+ * Configuration options for the {@link IdempotentExecutor}.
+ */
+interface IdempotentExecutorOptions {
+  /** This will be inserted after the prefix and before the idempotency key. */
+  namespace?: string;
+}
+
+/**
  * Manages idempotency in asynchronous operations by leveraging Redis for storage and distributed locks.
  */
 export class IdempotentExecutor {
   private redlock: Redlock;
   private cache: RedisCache;
+  private options: IdempotentExecutorOptions;
 
   /**
    * Initializes a new instance of the IdempotentExecutor class.
    *
    * @param {Client} redis - The Redis client to be used for managing state and locks.
+   * @param {IdempotentExecutorOptions} options - Optional. Configuration options for the executor.
    */
-  constructor(redis: Client) {
+  constructor(redis: Client, options: IdempotentExecutorOptions = {}) {
     this.redlock = new Redlock([redis]);
     this.cache = new RedisCache(redis);
+    this.options = options;
   }
 
   /**
@@ -90,7 +101,10 @@ export class IdempotentExecutor {
     const valueSerializer = options?.valueSerializer ?? new JSONSerializer<T>();
     const errorSerializer =
       options?.errorSerializer ?? new DefaultErrorSerializer();
-    const cacheKey = `idempotent-executor-result:${idempotencyKey}`;
+    let cacheKey = `idempotent-executor-result:${idempotencyKey}`;
+    if (this.options.namespace) {
+      cacheKey = `idempotent-executor-result:${this.options.namespace}:${idempotencyKey}`;
+    }
     const shouldIgnoreError = options?.shouldIgnoreError ?? (() => false);
     try {
       return await this.redlock.using<T>(
