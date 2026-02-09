@@ -292,14 +292,26 @@ export class IdempotentExecutor {
     errorSerializer: Serializer<Error>,
     shouldIgnoreError: (error: Error) => boolean,
   ): Promise<void> {
+    if (value instanceof Error) {
+      let ignoreError: boolean;
+      try {
+        ignoreError = shouldIgnoreError(value);
+      } catch (error) {
+        throw new IdempotentExecutorCallbackError(
+          'Failed to execute shouldIgnoreError callback',
+          idempotencyKey,
+          'shouldIgnoreError',
+          error,
+        );
+      }
+
+      if (ignoreError) {
+        return;
+      }
+    }
+
     try {
       if (value instanceof Error) {
-        const ignoreError = shouldIgnoreError(value);
-
-        if (ignoreError) {
-          return;
-        }
-
         await this.cache.set(cacheKey, {
           type: 'error',
           error: errorSerializer.serialize(value),

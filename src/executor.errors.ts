@@ -92,7 +92,8 @@ export class IdempotentExecutorCallbackError extends IdempotentExecutorErrorBase
       | 'onActionSuccess'
       | 'onActionError'
       | 'onSuccessReplay'
-      | 'onErrorReplay',
+      | 'onErrorReplay'
+      | 'shouldIgnoreError',
     cause?: unknown,
   ) {
     super(message, idempotencyKey, cause);

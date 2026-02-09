@@ -552,6 +552,27 @@ describe('IdempotentExecutor.run method', () => {
       );
     });
 
+    it('should throw IdempotentExecutorCallbackError if shouldIgnoreError fails', async () => {
+      const action = jest.fn().mockRejectedValue(new Error('action error'));
+      const shouldIgnoreError = jest.fn().mockImplementation(() => {
+        throw new Error('shouldIgnoreError error');
+      });
+
+      await expect(
+        executor.run('key', action, { shouldIgnoreError }),
+      ).rejects.toThrow(
+        new IdempotentExecutorCallbackError(
+          'Failed to execute shouldIgnoreError callback',
+          'key',
+          'shouldIgnoreError',
+          new Error('shouldIgnoreError error'),
+        ),
+      );
+
+      expect(action).toHaveBeenCalledTimes(1);
+      expect(shouldIgnoreError).toHaveBeenCalledWith(new Error('action error'));
+    });
+
     it('should throw IdempotentExecutorCriticalError if setting cached result fails', async () => {
       const action = jest.fn().mockResolvedValue('action result');
       jest
