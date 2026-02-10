@@ -55,6 +55,9 @@ interface IdempotentExecutorOptions {
 export class IdempotentExecutor {
   private static readonly CACHE_KEY_PREFIX = 'idempotent-executor-result';
   private static readonly LOCK_KEY_PREFIX = 'idempotent-executor-lock';
+  private static readonly DEFAULT_TIMEOUT_MS = 60000;
+  private static readonly LOCK_RETRY_DELAY_MS = 200;
+  private static readonly LOCK_EXTENSION_BUFFER_MS = 100;
 
   private redlock: Redlock;
   private cache: RedisCache;
@@ -100,7 +103,8 @@ export class IdempotentExecutor {
     action: () => Promise<T>,
     options?: Partial<RunOptions<T>>,
   ): Promise<T> {
-    const timeout = options?.timeout ?? 60000;
+    const timeout = this.normalizeTimeout(options?.timeout);
+    const lockSettings = this.buildLockSettings(timeout);
     const valueSerializer = options?.valueSerializer ?? new JSONSerializer<T>();
     const errorSerializer =
       options?.errorSerializer ?? new DefaultErrorSerializer();
@@ -111,11 +115,7 @@ export class IdempotentExecutor {
       return await this.redlock.using<T>(
         [lockKey],
         timeout,
-        {
-          retryCount: timeout / 200,
-          retryDelay: 200,
-          automaticExtensionThreshold: timeout / 2,
-        },
+        lockSettings,
         async () => {
           // Retrieve the cached result of the action.
           const cachedResult = await this.getCachedResult(
@@ -399,6 +399,44 @@ export class IdempotentExecutor {
     }
 
     return value;
+  }
+
+  /**
+   * Validates and normalizes the lock timeout in milliseconds.
+   */
+  private normalizeTimeout(timeout?: number): number {
+    const timeoutToUse = timeout ?? IdempotentExecutor.DEFAULT_TIMEOUT_MS;
+    if (!Number.isFinite(timeoutToUse) || timeoutToUse <= 0) {
+      throw new RangeError(
+        'Timeout must be a positive finite number in milliseconds',
+      );
+    }
+
+    return Math.ceil(timeoutToUse);
+  }
+
+  /**
+   * Computes lock settings with explicit integer values.
+   */
+  private buildLockSettings(timeout: number): {
+    retryCount: number;
+    retryDelay: number;
+    automaticExtensionThreshold: number;
+  } {
+    const retryCount = Math.max(
+      0,
+      Math.floor(timeout / IdempotentExecutor.LOCK_RETRY_DELAY_MS),
+    );
+    const automaticExtensionThreshold = Math.min(
+      Math.floor(timeout / 2),
+      timeout - IdempotentExecutor.LOCK_EXTENSION_BUFFER_MS,
+    );
+
+    return {
+      retryCount,
+      retryDelay: IdempotentExecutor.LOCK_RETRY_DELAY_MS,
+      automaticExtensionThreshold,
+    };
   }
 
   /**
