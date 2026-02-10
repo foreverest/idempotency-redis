@@ -53,6 +53,12 @@ describe('JSONSerializer', () => {
       ),
     );
   });
+
+  it('should throw an error when serialization result is undefined', () => {
+    expect(() => serializer.serialize(undefined)).toThrow(
+      new SerializerError('Not JSON serializable'),
+    );
+  });
 });
 
 describe('DefaultErrorSerializer', () => {

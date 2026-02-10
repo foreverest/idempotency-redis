@@ -64,8 +64,15 @@ export class JSONSerializer<T> implements Serializer<T> {
   serialize(value: T): string {
     try {
       // Assumes the value is already in a JSON serializable format.
-      return JSON.stringify(value);
+      const result = JSON.stringify(value);
+      if (typeof result !== 'string') {
+        throw new SerializerError('Not JSON serializable');
+      }
+      return result;
     } catch (err) {
+      if (err instanceof SerializerError) {
+        throw err;
+      }
       throw new SerializerError('Not JSON serializable', err);
     }
   }
