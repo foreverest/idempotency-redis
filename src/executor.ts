@@ -331,6 +331,10 @@ export class IdempotentExecutor {
           type: 'error',
           error: errorSerializer.serialize(value),
         });
+      } else if (value === undefined) {
+        await this.cache.set(cacheKey, {
+          type: 'value',
+        });
       } else {
         await this.cache.set(cacheKey, {
           type: 'value',
