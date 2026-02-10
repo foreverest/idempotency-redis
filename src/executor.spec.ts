@@ -146,7 +146,9 @@ describe('IdempotentExecutor.run method', () => {
         const action = jest.fn().mockResolvedValue('action result');
 
         await expect(
-          executor.run(`invalid-timeout-${String(timeout)}`, action, { timeout }),
+          executor.run(`invalid-timeout-${String(timeout)}`, action, {
+            timeout,
+          }),
         ).rejects.toThrow(
           new RangeError(
             'Timeout must be a positive finite number in milliseconds',
