@@ -1,26 +1,42 @@
 # Contributing
 
-Thank you for considering contributing to my project! Here's a quick guide to get you started.
+Thanks for contributing to `idempotency-redis`.
 
 ## How to Contribute
 
-- **Report Bugs** or **Suggest Enhancements** by opening issues.
-- **Submit Pull Requests** with bug fixes or new features.
-
-## Pull Request Process
-
-1. Fork the repo and create your branch from `main`.
-2. If you've added code, add tests that cover your changes.
-3. Ensure your code passes all tests.
-4. Submit your pull request.
+- Report bugs, regressions, docs gaps, or feature ideas by opening an issue.
+- Submit pull requests for fixes, new tests, or documentation improvements.
 
 ## Development Setup
 
-1. Clone your forked repository.
-2. Install dependencies with `npm install`.
-3. Make your changes and run `npm test` to ensure everything works.
+1. Fork and clone the repository.
+2. Install dependencies with `npm ci`.
+3. Run the local checks:
+
+```bash
+npm run build
+npm run lint:check
+npm run format:check
+npm test
+```
+
+## Pull Request Process
+
+1. Create your branch from `main`.
+2. Keep your change focused and include tests when behavior changes.
+3. Ensure all checks pass locally before opening the PR:
+
+```bash
+npm run build
+npm run lint:check
+npm run format:check
+npm test
+```
+
+4. Open the pull request and describe what changed, why it changed, and how it was tested.
 
 ## Style Guide
 
+- Follow the repository ESLint and Prettier configuration as the source of truth.
 - Write commit messages in the present tense.
-- Follow the [JavaScript Standard Style](https://standardjs.com/).
+- Prefer small, focused commits.

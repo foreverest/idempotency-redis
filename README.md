@@ -5,19 +5,27 @@
 [![npm version](https://img.shields.io/npm/v/idempotency-redis.svg?style=flat-square)](https://www.npmjs.com/package/idempotency-redis)
 [![npm](https://img.shields.io/npm/dm/idempotency-redis.svg?style=flat-square)](https://npm-stat.com/charts.html?package=idempotency-redis)
 
-`idempotency-redis` is a Node.js package designed to ensure idempotent operations in distributed systems, with Redis at its core for state management and distributed locks. It provides a straightforward way to execute operations exactly once and replay results of previously completed operations. This package is particularly useful for applications that require idempotency guarantees, such as financial transactions, API request processing, and more.
+`idempotency-redis` is a Node.js package for idempotent operations in distributed systems, with Redis used for shared state and distributed locks. It helps ensure one execution per idempotency key under normal operation and replays previously cached results (including failures) for duplicate calls. It is useful for workflows such as payment processing and retried API requests.
 
 ## Table of Contents
 
+- [Prerequisites](#prerequisites)
 - [Installation](#installation)
 - [Usage](#usage)
   - [Basic Usage](#basic-usage)
+  - [Guarantees and Limitations](#guarantees-and-limitations)
   - [The `run` Method](#the-run-method)
   - [Namespaces](#namespaces)
   - [Serialization](#serialization)
   - [Custom Callbacks for Enhanced Control](#custom-callbacks-for-enhanced-control)
 - [Contributing](#contributing)
 - [License](#license)
+
+## Prerequisites
+
+- Node.js `^20.0.0 || ^22.0.0 || ^24.0.0`
+- A reachable Redis instance
+- [`ioredis` `5.x`](https://www.npmjs.com/package/ioredis) (peer dependency)
 
 ## Installation
 
@@ -43,6 +51,8 @@ const redisClient = new Redis();
 
 const executor = new IdempotentExecutor(redisClient);
 ```
+
+`idempotency-redis` builds cache keys with `:` separators. Avoid using `:` inside `namespace` and `idempotencyKey` values to prevent cache key collisions.
 
 Execute an operation idempotently:
 
@@ -88,15 +98,22 @@ await Promise.all(
 // Failure: 0.4333214870751385
 // Failure: 0.4333214870751385
 // Failure: 0.4333214870751385
-// Failure: 0.4333214870151385
+// Failure: 0.4333214870751385
 // Failure: 0.4333214870751385
 ```
 
+### Guarantees and Limitations
+
+- For concurrent calls with the same `idempotencyKey` (within the same namespace), one execution wins and others replay the cached result.
+- Errors are cached and replayed by default. If `shouldIgnoreError` returns `true`, that error is not cached and future calls execute again.
+- Cached results are stored without TTL by default. Keys remain in Redis until deleted by external cleanup.
+- If caching the final result fails, the executor throws `IdempotentExecutorCriticalError`; idempotency may be lost for that operation.
+
 ### The `run` Method
 
-The `run` method is a core function of the `IdempotentExecutor`, responsible for executing operations idempotently. It accepts the following arguments:
+The `run` method is the core API of `IdempotentExecutor`. It coordinates idempotent execution and replay for a given key. It accepts the following arguments:
 
-- `idempotencyKey`: A unique string that identifies the operation. This key ensures that the operation is executed exactly once, regardless of how many times the run method is called with the same key.
+- `idempotencyKey`: A unique string that identifies the operation. Calls that share this key can replay a cached value/error instead of re-running the action. Do not include `:` in this key.
 
 - `action`: This is the operation that you want to execute idempotently. It should be an asynchronous function or a function that returns a promise.
 
@@ -121,13 +138,13 @@ const executor = new IdempotentExecutor(redisClient, {
 });
 ```
 
-Limitation: cache keys are built by joining the prefix, namespace, and idempotency key with `:`. Avoid using `:` in `namespace` and `idempotencyKey`, otherwise different namespace/key combinations can map to the same Redis key.
+Limitation: cache keys are built by joining prefix, namespace, and idempotency key with `:`. Avoid using `:` in `namespace` and `idempotencyKey`, otherwise different namespace/key combinations can map to the same Redis key.
 
 ### Serialization
 
 The serialization process involves converting values and errors produced by the action function into a format suitable for storage, enabling their later retrieval and replay. While serialization and deserialization of simple objects and standard Error instances are relatively straightforward, handling custom instances and errors requires a more nuanced approach. Specifically, if your operation throws custom errors or returns instances of custom classes, directly serializing and deserializing these objects might not accurately preserve their types or states. To address this challenge, the run method accepts two specialized serializers: one for handling successful operation results and another for errors.
 
-By default, `idempotency-redis` uses the `JSONSerializer` for values, utilizing JavaScript's built-in `JSON.stringify` and `JSON.parse methods` for serialization and deserialization, respectively. For errors, the default serializer is `DefaultErrorSerializer`, which builds upon the [`serialize-error-cjs`](https://www.npmjs.com/package/serialize-error-cjs) package to facilitate error object serialization/deserialization, including support for common error types. While these defaults are generally sufficient for many use cases, they may not fully capture the fidelity of custom errors or complex objects.
+By default, `idempotency-redis` uses the `JSONSerializer` for values, utilizing JavaScript's built-in `JSON.stringify` and `JSON.parse` methods for serialization and deserialization, respectively. For errors, the default serializer is `DefaultErrorSerializer`, which builds upon the [`serialize-error-cjs`](https://www.npmjs.com/package/serialize-error-cjs) package to facilitate error object serialization/deserialization, including support for common error types. While these defaults are generally sufficient for many use cases, they may not fully capture the fidelity of custom errors or complex objects.
 
 To ensure that your serialized data maintains as much of its original structure and type information as possible, you can define and use custom serializers. These custom serializers allow for the precise control over how objects are transformed into strings and subsequently reconstituted. Below is an example illustrating how to create and use a custom serializer capable of handling both instances of a `CustomClass` and numeric values:
 
