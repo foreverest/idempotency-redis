@@ -693,7 +693,7 @@ describe('IdempotentExecutor.run method', () => {
       expect(result2).toBe('action result');
       expect(action).toHaveBeenCalledTimes(1);
 
-      // Verify the cache key includes the namespace
+      // Verify the cache key includes the namespace.
       const cacheKey = await redisClient.hgetall(
         'idempotent-executor-result:test-namespace:key1',
       );
@@ -719,7 +719,7 @@ describe('IdempotentExecutor.run method', () => {
       expect(action1).toHaveBeenCalledTimes(1);
       expect(action2).toHaveBeenCalledTimes(1);
 
-      // Verify both cache entries exist
+      // Verify both cache entries exist.
       const cacheKey1 = await redisClient.hgetall(
         'idempotent-executor-result:namespace1:same-key',
       );
@@ -743,7 +743,7 @@ describe('IdempotentExecutor.run method', () => {
       expect(result2).toBe('action result');
       expect(action).toHaveBeenCalledTimes(1);
 
-      // Verify the cache key does not include a namespace
+      // Verify the cache key does not include a namespace.
       const cacheKey = await redisClient.hgetall(
         'idempotent-executor-result:key1',
       );
@@ -767,7 +767,7 @@ describe('IdempotentExecutor.run method', () => {
       expect(action1).toHaveBeenCalledTimes(1);
       expect(action2).toHaveBeenCalledTimes(1);
 
-      // Verify both cache entries exist separately
+      // Verify both cache entries exist separately.
       const cacheKeyWithoutNamespace = await redisClient.hgetall(
         'idempotent-executor-result:same-key',
       );
@@ -796,7 +796,7 @@ describe('IdempotentExecutor.run method', () => {
 
       expect(action).toHaveBeenCalledTimes(1);
 
-      // Verify the error cache key includes the namespace
+      // Verify the error cache key includes the namespace.
       const cacheKey = await redisClient.hgetall(
         'idempotent-executor-result:error-namespace:key1',
       );
@@ -822,7 +822,7 @@ describe('IdempotentExecutor.run method', () => {
       expect(action1).toHaveBeenCalledTimes(1);
       expect(action2).toHaveBeenCalledTimes(1);
 
-      // Verify both error cache entries exist separately
+      // Verify both error cache entries exist separately.
       const cacheKey1 = await redisClient.hgetall(
         'idempotent-executor-result:namespace1:same-key',
       );
@@ -831,6 +831,41 @@ describe('IdempotentExecutor.run method', () => {
       );
       expect(cacheKey1.type).toBe('error');
       expect(cacheKey2.type).toBe('error');
+    });
+
+    it('should run same idempotency key concurrently across different namespaces', async () => {
+      const action1 = jest
+        .fn()
+        .mockImplementation(
+          () =>
+            new Promise((resolve) =>
+              setTimeout(() => resolve('namespace1'), 500),
+            ),
+        );
+      const action2 = jest
+        .fn()
+        .mockImplementation(
+          () =>
+            new Promise((resolve) =>
+              setTimeout(() => resolve('namespace2'), 500),
+            ),
+        );
+      const executor1 = new IdempotentExecutor(redisClient, {
+        namespace: 'namespace1',
+      });
+      const executor2 = new IdempotentExecutor(redisClient, {
+        namespace: 'namespace2',
+      });
+
+      const [result1, result2] = await Promise.all([
+        executor1.run('shared-key', action1, { timeout: 200 }),
+        executor2.run('shared-key', action2, { timeout: 200 }),
+      ]);
+
+      expect(result1).toBe('namespace1');
+      expect(result2).toBe('namespace2');
+      expect(action1).toHaveBeenCalledTimes(1);
+      expect(action2).toHaveBeenCalledTimes(1);
     });
   });
 });

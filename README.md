@@ -13,6 +13,7 @@
 - [Usage](#usage)
   - [Basic Usage](#basic-usage)
   - [The `run` Method](#the-run-method)
+  - [Namespaces](#namespaces)
   - [Serialization](#serialization)
   - [Custom Callbacks for Enhanced Control](#custom-callbacks-for-enhanced-control)
 - [Contributing](#contributing)
@@ -109,6 +110,18 @@ The `run` method is a core function of the `IdempotentExecutor`, responsible for
   - `onSuccessReplay`: A callback invoked when a successful action is replayed.
   - `onErrorReplay`: A callback invoked when a failed action is replayed.
   - `shouldIgnoreError`: A callback invoked when an error is encountered. If it returns `true`, the error will not be cached and will not be replayed.
+
+### Namespaces
+
+You can scope cache entries by initializing the executor with a `namespace`:
+
+```js
+const executor = new IdempotentExecutor(redisClient, {
+  namespace: 'payments',
+});
+```
+
+Limitation: cache keys are built by joining the prefix, namespace, and idempotency key with `:`. Avoid using `:` in `namespace` and `idempotencyKey`, otherwise different namespace/key combinations can map to the same Redis key.
 
 ### Serialization
 

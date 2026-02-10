@@ -53,6 +53,9 @@ interface IdempotentExecutorOptions {
  * Manages idempotency in asynchronous operations by leveraging Redis for storage and distributed locks.
  */
 export class IdempotentExecutor {
+  private static readonly CACHE_KEY_PREFIX = 'idempotent-executor-result';
+  private static readonly LOCK_KEY_PREFIX = 'idempotent-executor-lock';
+
   private redlock: Redlock;
   private cache: RedisCache;
   private options: IdempotentExecutorOptions;
@@ -101,14 +104,12 @@ export class IdempotentExecutor {
     const valueSerializer = options?.valueSerializer ?? new JSONSerializer<T>();
     const errorSerializer =
       options?.errorSerializer ?? new DefaultErrorSerializer();
-    let cacheKey = `idempotent-executor-result:${idempotencyKey}`;
-    if (this.options.namespace) {
-      cacheKey = `idempotent-executor-result:${this.options.namespace}:${idempotencyKey}`;
-    }
+    const cacheKey = this.buildCacheKey(idempotencyKey);
+    const lockKey = this.buildLockKey(idempotencyKey);
     const shouldIgnoreError = options?.shouldIgnoreError ?? (() => false);
     try {
       return await this.redlock.using<T>(
-        [idempotencyKey],
+        [lockKey],
         timeout,
         {
           retryCount: timeout / 200,
@@ -382,5 +383,29 @@ export class IdempotentExecutor {
     }
 
     return value;
+  }
+
+  /**
+   * Creates the cache key for action results.
+   */
+  private buildCacheKey(idempotencyKey: string): string {
+    if (!this.options.namespace) {
+      return `${IdempotentExecutor.CACHE_KEY_PREFIX}:${idempotencyKey}`;
+    }
+
+    return `${IdempotentExecutor.CACHE_KEY_PREFIX}:${this.options.namespace}:${idempotencyKey}`;
+  }
+
+  /**
+   * Creates a lock key that isolates operations across namespaces.
+   */
+  private buildLockKey(idempotencyKey: string): string {
+    const encodedIdempotencyKey = encodeURIComponent(idempotencyKey);
+    if (!this.options.namespace) {
+      return `${IdempotentExecutor.LOCK_KEY_PREFIX}:key:${encodedIdempotencyKey}`;
+    }
+
+    const encodedNamespace = encodeURIComponent(this.options.namespace);
+    return `${IdempotentExecutor.LOCK_KEY_PREFIX}:namespace:${encodedNamespace}:key:${encodedIdempotencyKey}`;
   }
 }
