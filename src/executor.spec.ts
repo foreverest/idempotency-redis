@@ -140,6 +140,57 @@ describe('IdempotentExecutor.run method', () => {
       expect(action).toHaveBeenCalledTimes(1);
     });
 
+    it.each([0, -1, Number.NaN])(
+      'should reject invalid timeout values (%s)',
+      async (timeout) => {
+        const action = jest.fn().mockResolvedValue('action result');
+
+        await expect(
+          executor.run(`invalid-timeout-${String(timeout)}`, action, { timeout }),
+        ).rejects.toThrow(
+          new RangeError(
+            'Timeout must be a positive finite number in milliseconds',
+          ),
+        );
+        expect(action).toHaveBeenCalledTimes(0);
+      },
+    );
+
+    it('should normalize timeout and compute integer lock retry settings', async () => {
+      const action = jest.fn().mockResolvedValue('action result');
+      const usingSpy = jest.spyOn(
+        (
+          executor as unknown as {
+            redlock: {
+              using: (...args: unknown[]) => Promise<unknown>;
+            };
+          }
+        ).redlock,
+        'using',
+      );
+
+      await executor.run('normalized-timeout-key', action, { timeout: 399.1 });
+
+      expect(usingSpy).toHaveBeenCalledTimes(1);
+      const usingArgs = usingSpy.mock.calls[0] as [
+        string[],
+        number,
+        {
+          retryCount: number;
+          retryDelay: number;
+          automaticExtensionThreshold: number;
+        },
+      ];
+
+      expect(usingArgs[1]).toBe(400);
+      expect(Number.isInteger(usingArgs[2].retryCount)).toBe(true);
+      expect(usingArgs[2].retryCount).toBe(2);
+      expect(usingArgs[2].retryDelay).toBe(200);
+      expect(Number.isInteger(usingArgs[2].automaticExtensionThreshold)).toBe(
+        true,
+      );
+    });
+
     it('should timeout lock if action takes too long', async () => {
       const action = jest
         .fn()
