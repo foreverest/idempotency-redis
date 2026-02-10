@@ -834,14 +834,22 @@ describe('IdempotentExecutor.run method', () => {
     });
 
     it('should run same idempotency key concurrently across different namespaces', async () => {
-      const action1 = jest.fn().mockImplementation(
-        () =>
-          new Promise((resolve) => setTimeout(() => resolve('namespace1'), 500)),
-      );
-      const action2 = jest.fn().mockImplementation(
-        () =>
-          new Promise((resolve) => setTimeout(() => resolve('namespace2'), 500)),
-      );
+      const action1 = jest
+        .fn()
+        .mockImplementation(
+          () =>
+            new Promise((resolve) =>
+              setTimeout(() => resolve('namespace1'), 500),
+            ),
+        );
+      const action2 = jest
+        .fn()
+        .mockImplementation(
+          () =>
+            new Promise((resolve) =>
+              setTimeout(() => resolve('namespace2'), 500),
+            ),
+        );
       const executor1 = new IdempotentExecutor(redisClient, {
         namespace: 'namespace1',
       });
