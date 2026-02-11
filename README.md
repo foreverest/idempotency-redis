@@ -15,6 +15,7 @@
   - [Basic Usage](#basic-usage)
   - [Guarantees and Limitations](#guarantees-and-limitations)
   - [The `run` Method](#the-run-method)
+  - [Cache TTL](#cache-ttl)
   - [Namespaces](#namespaces)
   - [Serialization](#serialization)
   - [Custom Callbacks for Enhanced Control](#custom-callbacks-for-enhanced-control)
@@ -106,7 +107,7 @@ await Promise.all(
 
 - For concurrent calls with the same `idempotencyKey` (within the same namespace), one execution wins and others replay the cached result.
 - Errors are cached and replayed by default. If `shouldIgnoreError` returns `true`, that error is not cached and future calls execute again.
-- Cached results are stored without TTL by default. Keys remain in Redis until deleted by external cleanup.
+- Cached results are stored without TTL by default. You can set `ttlMs` in the executor constructor to expire entries automatically.
 - If caching the final result fails, the executor throws `IdempotentExecutorCriticalError`; idempotency may be lost for that operation.
 
 ### The `run` Method
@@ -127,6 +128,18 @@ The `run` method is the core API of `IdempotentExecutor`. It coordinates idempot
   - `onSuccessReplay`: A callback invoked when a successful action is replayed.
   - `onErrorReplay`: A callback invoked when a failed action is replayed.
   - `shouldIgnoreError`: A callback invoked when an error is encountered. If it returns `true`, the error will not be cached and will not be replayed.
+
+### Cache TTL
+
+By default, cached results do not expire. To enable expiration, configure `ttlMs` on the executor.
+
+```js
+const executor = new IdempotentExecutor(redisClient, {
+  ttlMs: 24 * 60 * 60 * 1000, // 24 hours
+});
+```
+
+`ttlMs` applies to both successful and failed cached results.
 
 ### Namespaces
 

@@ -158,6 +158,59 @@ describe('IdempotentExecutor.run method', () => {
       },
     );
 
+    it.each([0, -1, Number.NaN])(
+      'should reject invalid executor ttl values (%s)',
+      (ttlMs) => {
+        expect(() => new IdempotentExecutor(redisClient, { ttlMs })).toThrow(
+          new RangeError(
+            'ttlMs must be a positive finite number in milliseconds',
+          ),
+        );
+      },
+    );
+
+    it('should normalize and apply executor-level ttl to cached value', async () => {
+      const action = jest.fn().mockResolvedValue('action result');
+      const ttlMs = 399.1;
+      const pexpireSpy = jest.spyOn(redisClient, 'pexpire');
+      const executorWithTtl = new IdempotentExecutor(redisClient, { ttlMs });
+
+      await executorWithTtl.run('ttl-key-value', action);
+
+      expect(pexpireSpy).toHaveBeenCalledTimes(1);
+      expect(pexpireSpy).toHaveBeenCalledWith(
+        'idempotent-executor-result:ttl-key-value',
+        400,
+      );
+    });
+
+    it('should apply ttl to cached errors', async () => {
+      const error = new Error('action failed');
+      const action = jest.fn().mockRejectedValue(error);
+      const ttlMs = 5000;
+      const pexpireSpy = jest.spyOn(redisClient, 'pexpire');
+      const executorWithTtl = new IdempotentExecutor(redisClient, { ttlMs });
+
+      await expect(
+        executorWithTtl.run('ttl-key-error', action),
+      ).rejects.toThrow(error);
+
+      expect(pexpireSpy).toHaveBeenCalledTimes(1);
+      expect(pexpireSpy).toHaveBeenCalledWith(
+        'idempotent-executor-result:ttl-key-error',
+        ttlMs,
+      );
+    });
+
+    it('should not apply ttl when ttl is not configured', async () => {
+      const action = jest.fn().mockResolvedValue('action result');
+      const pexpireSpy = jest.spyOn(redisClient, 'pexpire');
+
+      await executor.run('ttl-key-none', action);
+
+      expect(pexpireSpy).not.toHaveBeenCalled();
+    });
+
     it('should normalize timeout and compute integer lock retry settings', async () => {
       const action = jest.fn().mockResolvedValue('action result');
       const usingSpy = jest.spyOn(

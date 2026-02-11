@@ -69,9 +69,11 @@ describe('RedisCache', () => {
     it('successfully sets a value', async () => {
       const mockKey = 'testKey';
       const mockValue: CachedResult = { type: 'value', value: 'some value' };
+      const pexpireSpy = jest.spyOn(redisClient, 'pexpire');
 
       await expect(cache.set(mockKey, mockValue)).resolves.toBeUndefined();
       expect(await redisClient.hgetall(mockKey)).toEqual(mockValue);
+      expect(pexpireSpy).not.toHaveBeenCalled();
     });
 
     it('successfully sets undefined value', async () => {
@@ -82,6 +84,19 @@ describe('RedisCache', () => {
       expect(await redisClient.hgetall(mockKey)).toEqual(mockValue);
     });
 
+    it('applies ttl when provided', async () => {
+      const mockKey = 'testKey';
+      const mockValue: CachedResult = { type: 'value', value: 'some value' };
+      const ttlMs = 5000;
+      const pexpireSpy = jest.spyOn(redisClient, 'pexpire');
+
+      await expect(
+        cache.set(mockKey, mockValue, ttlMs),
+      ).resolves.toBeUndefined();
+      expect(await redisClient.hgetall(mockKey)).toEqual(mockValue);
+      expect(pexpireSpy).toHaveBeenCalledWith(mockKey, ttlMs);
+    });
+
     it('throws RedisCacheError when Redis operation fails', async () => {
       const mockKey = 'testKey';
       const mockValue: CachedResult = { type: 'error', error: 'some error' };
@@ -89,6 +104,19 @@ describe('RedisCache', () => {
       redisClient.hset = jest.fn().mockRejectedValue(mockError);
 
       await expect(cache.set(mockKey, mockValue)).rejects.toThrow(
+        new RedisCacheError('Failed to set cached result', mockKey, mockError),
+      );
+    });
+
+    it('throws RedisCacheError when setting ttl fails', async () => {
+      const mockKey = 'testKey';
+      const mockValue: CachedResult = { type: 'error', error: 'some error' };
+      const mockError = new Error('Redis error');
+      jest
+        .spyOn(redisClient, 'pexpire')
+        .mockImplementation(() => Promise.reject(mockError));
+
+      await expect(cache.set(mockKey, mockValue, 5000)).rejects.toThrow(
         new RedisCacheError('Failed to set cached result', mockKey, mockError),
       );
     });
