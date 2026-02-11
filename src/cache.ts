@@ -49,11 +49,15 @@ export class RedisCache {
    * Sets a value in the cache.
    * @param key The cache key to set the value for.
    * @param value The CachedResult to store.
+   * @param ttlMs Optional. Time-to-live in milliseconds.
    * @returns A promise that resolves when the operation is complete.
    */
-  async set(key: string, value: CachedResult): Promise<void> {
+  async set(key: string, value: CachedResult, ttlMs?: number): Promise<void> {
     try {
       await this.redis.hset(key, value);
+      if (ttlMs !== undefined) {
+        await this.redis.pexpire(key, ttlMs);
+      }
     } catch (error) {
       throw new RedisCacheError('Failed to set cached result', key, error);
     }

@@ -39,6 +39,7 @@ describeWithRedis('RedisCache integration (real Redis)', () => {
       type: 'value',
       value: '"serialized-value"',
     });
+    await expect(redisClient.pttl(cacheKey)).resolves.toBe(-1);
   });
 
   it('stores undefined values without writing an empty field', async () => {
@@ -62,6 +63,24 @@ describeWithRedis('RedisCache integration (real Redis)', () => {
       type: 'error',
       error: '{"name":"Error","message":"boom"}',
     });
+  });
+
+  it('applies ttl when provided', async () => {
+    const cacheKey = key('ttl');
+    const ttlMs = 10000;
+
+    await cache.set(
+      cacheKey,
+      {
+        type: 'value',
+        value: '"serialized-value"',
+      },
+      ttlMs,
+    );
+
+    const ttl = await redisClient.pttl(cacheKey);
+    expect(ttl).toBeGreaterThan(0);
+    expect(ttl).toBeLessThanOrEqual(ttlMs);
   });
 
   it('returns null when key does not exist', async () => {

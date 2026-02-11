@@ -47,6 +47,8 @@ interface RunOptions<T> {
 interface IdempotentExecutorOptions {
   /** This will be inserted after the prefix and before the idempotency key. */
   namespace?: string;
+  /** Time-to-live for cached results in milliseconds. */
+  ttlMs?: number;
 }
 
 /**
@@ -72,7 +74,10 @@ export class IdempotentExecutor {
   constructor(redis: Client, options: IdempotentExecutorOptions = {}) {
     this.redlock = new Redlock([redis]);
     this.cache = new RedisCache(redis);
-    this.options = options;
+    this.options = {
+      ...options,
+      ttlMs: this.normalizeTtl(options.ttlMs),
+    };
   }
 
   /**
@@ -104,6 +109,7 @@ export class IdempotentExecutor {
     options?: Partial<RunOptions<T>>,
   ): Promise<T> {
     const timeout = this.normalizeTimeout(options?.timeout);
+    const ttlMs = this.options.ttlMs;
     const lockSettings = this.buildLockSettings(timeout);
     const valueSerializer = options?.valueSerializer ?? new JSONSerializer<T>();
     const errorSerializer =
@@ -169,6 +175,7 @@ export class IdempotentExecutor {
             idempotencyKey,
             cacheKey,
             actionResult,
+            ttlMs,
             valueSerializer,
             errorSerializer,
             shouldIgnoreError,
@@ -303,6 +310,7 @@ export class IdempotentExecutor {
     idempotencyKey: string,
     cacheKey: string,
     value: T | Error,
+    ttlMs: number | undefined,
     valueSerializer: Serializer<T>,
     errorSerializer: Serializer<Error>,
     shouldIgnoreError: (error: Error) => boolean,
@@ -327,19 +335,31 @@ export class IdempotentExecutor {
 
     try {
       if (value instanceof Error) {
-        await this.cache.set(cacheKey, {
-          type: 'error',
-          error: errorSerializer.serialize(value),
-        });
+        await this.cache.set(
+          cacheKey,
+          {
+            type: 'error',
+            error: errorSerializer.serialize(value),
+          },
+          ttlMs,
+        );
       } else if (value === undefined) {
-        await this.cache.set(cacheKey, {
-          type: 'value',
-        });
+        await this.cache.set(
+          cacheKey,
+          {
+            type: 'value',
+          },
+          ttlMs,
+        );
       } else {
-        await this.cache.set(cacheKey, {
-          type: 'value',
-          value: valueSerializer.serialize(value),
-        });
+        await this.cache.set(
+          cacheKey,
+          {
+            type: 'value',
+            value: valueSerializer.serialize(value),
+          },
+          ttlMs,
+        );
       }
     } catch (error) {
       // If caching the result fails, throw a critical error as it might lead to non-idempotent executions.
@@ -413,6 +433,22 @@ export class IdempotentExecutor {
     }
 
     return Math.ceil(timeoutToUse);
+  }
+
+  /**
+   * Validates and normalizes ttlMs in milliseconds.
+   */
+  private normalizeTtl(ttlMs?: number): number | undefined {
+    if (ttlMs === undefined) {
+      return undefined;
+    }
+    if (!Number.isFinite(ttlMs) || ttlMs <= 0) {
+      throw new RangeError(
+        'ttlMs must be a positive finite number in milliseconds',
+      );
+    }
+
+    return Math.ceil(ttlMs);
   }
 
   /**
